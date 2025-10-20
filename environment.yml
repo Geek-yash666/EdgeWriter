@@ -1,0 +1,44 @@
+name: edgewriter
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - huggingface
+dependencies:
+  # Core Python version
+  - python=3.10
+
+  # Core ML/DL Frameworks with CUDA support
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda>=12
+
+  # Hugging Face Ecosystem
+  - transformers
+  - datasets
+  - accelerate
+  - peft
+  - bitsandbytes
+  - tokenizers
+
+  # Data Processing & Exploration
+  - pandas
+  - numpy
+  - nltk
+  - scikit-learn
+
+  # Visualization
+  - matplotlib
+  - seaborn
+
+  # Prototyping UI
+  - streamlit
+
+  # Development & Utilities
+  - jupyterlab
+  - tqdm
+
+  # Pip dependencies
+  - pip:
+    - -r requirements.txt

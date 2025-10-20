@@ -1,1 +1,27 @@
+# Core ML/DL Framework
+torch
+transformers
+datasets
+accelerate
+# For LoRA fine-tuning
+peft
+# For model quantization
+bitsandbytes
 
+# Data Processing & Exploration
+pandas
+numpy
+nltk
+scikit-learn
+
+# Visualization
+matplotlib
+seaborn
+
+# Prototyping UI
+streamlit
+
+# Development & Utilities
+jupyterlab
+tqdm
+sentencepiece
