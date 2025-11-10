@@ -1,12 +1,18 @@
 # Core ML/DL Framework
 torch
-transformers
+transformers>=4.36.0
 datasets
 accelerate
+
 # For LoRA fine-tuning
 peft
+trl
+
 # For model quantization
 bitsandbytes
+
+# Flash Attention
+flash-attn
 
 # Data Processing & Exploration
 pandas
@@ -14,14 +20,23 @@ numpy
 nltk
 scikit-learn
 
+# Evaluation Metrics
+rouge-score
+evaluate
+
 # Visualization
 matplotlib
 seaborn
 
-# Prototyping UI
+# UI for Testing
+gradio
 streamlit
+
+# GGUF Inference
+llama-cpp-python
 
 # Development & Utilities
 jupyterlab
 tqdm
 sentencepiece
+huggingface-hub

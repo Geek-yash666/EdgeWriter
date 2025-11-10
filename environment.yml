@@ -5,8 +5,7 @@ channels:
   - conda-forge
   - huggingface
 dependencies:
-  # Core Python version
-  - python=3.10
+  - python=3.11
 
   # Core ML/DL Frameworks with CUDA support
   - pytorch
@@ -15,7 +14,7 @@ dependencies:
   - pytorch-cuda>=12
 
   # Hugging Face Ecosystem
-  - transformers
+  - transformers>=4.36.0
   - datasets
   - accelerate
   - peft
@@ -32,13 +31,22 @@ dependencies:
   - matplotlib
   - seaborn
 
-  # Prototyping UI
+  # UI for Testing
+  - gradio
   - streamlit
 
   # Development & Utilities
   - jupyterlab
   - tqdm
+  - cmake
+  - git
 
   # Pip dependencies
   - pip:
-    - -r requirements.txt
+    - trl
+    - flash-attn
+    - rouge-score
+    - evaluate
+    - llama-cpp-python
+    - sentencepiece
+    - huggingface-hub
