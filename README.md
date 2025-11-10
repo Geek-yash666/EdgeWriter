@@ -4,7 +4,7 @@
 
 An offline, on-device AI writing assistant for summarization, rewriting, proofreading, and paraphrasing. EdgeWriter uses a dual-model architecture with speculative decoding to provide fast, accurate text generation that runs entirely on your device - no internet required.
 
-## 🎯 Project Overview
+## Project Overview
 
 EdgeWriter implements a **speculative decoding architecture** that adapts to your hardware:
 
@@ -64,7 +64,7 @@ The fine-tuned base model was evaluated using standard NLP metrics:
 - Brevity Penalty: 1.0
 - Length Ratio: 1.015
 
-## 🚀Quick Start
+## Quick Start
 
 ### Running the Draft Model (Browser-based)
 
