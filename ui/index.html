@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EdgeWriter AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0f172a;
+      background-image: 
+        radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%),
+        radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%),
+        radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+      min-height: 100vh;
+      color: #e2e8f0;
+      overflow-x: hidden;
+    }
+
+    .blob {
+      position: absolute;
+      filter: blur(80px);
+      z-index: -1;
+      opacity: 0.6;
+      animation: float 10s infinite ease-in-out;
+    }
+    .blob-1 { top: 10%; left: 10%; width: 300px; height: 300px; background: #7c3aed; animation-delay: 0s; }
+    .blob-2 { top: 40%; right: 10%; width: 350px; height: 350px; background: #db2777; animation-delay: -2s; }
+    .blob-3 { bottom: 10%; left: 30%; width: 300px; height: 300px; background: #2563eb; animation-delay: -4s; }
+
+    @keyframes float {
+      0% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(30px, -50px) scale(1.1); }
+      66% { transform: translate(-20px, 20px) scale(0.9); }
+      100% { transform: translate(0, 0) scale(1); }
+    }
+
+    .glass-panel {
+      background: rgba(30, 41, 59, 0.4);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      border-radius: 1.5rem;
+    }
+
+    .glass-input {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: white;
+      transition: all 0.3s ease;
+    }
+    .glass-input:focus {
+      background: rgba(15, 23, 42, 0.8);
+      border-color: #8b5cf6;
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    }
+
+    textarea::-webkit-scrollbar { width: 8px; }
+    textarea::-webkit-scrollbar-track { background: transparent; }
+    textarea::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+
+    select {
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+      background-position: right 0.5rem center;
+      background-repeat: no-repeat;
+      background-size: 1.5em 1.5em;
+      padding-right: 2.5rem;
+    }
+
+    .status-dot {
+      height: 8px; width: 8px; border-radius: 50%; display: inline-block; margin-right: 6px;
+    }
+    .status-dot.active { background-color: #4ade80; box-shadow: 0 0 8px #4ade80; }
+    .status-dot.busy { background-color: #fbbf24; box-shadow: 0 0 8px #fbbf24; animation: pulse 2s infinite; }
+    .status-dot.error { background-color: #f87171; box-shadow: 0 0 8px #f87171; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .model-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .model-badge.base {
+      background: rgba(59, 130, 246, 0.2);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .model-badge.hybrid {
+      background: rgba(168, 85, 247, 0.2);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+  </style>
+</head>
+<body class="p-4 md:p-8 flex flex-col items-center">
+
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+
+  <header class="w-full max-w-6xl mb-8 flex justify-between items-center glass-panel rounded-2xl p-6">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
+        <i class="fas fa-bolt text-white text-lg"></i>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold tracking-tight text-white">EdgeWriter</h1>
+        <p class="text-xs text-slate-400">Dual-Engine • Fully Private</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <div class="hidden md:block text-right">
+        <p id="device-status" class="text-xs font-medium text-slate-300">Not Initialized</p>
+        <p class="text-[10px] text-slate-500 uppercase tracking-wider">Engine Status</p>
+      </div>
+      <div id="status-indicator" class="status-dot"></div>
+    </div>
+  </header>
+
+  <main class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <section class="glass-panel rounded-2xl p-6 flex flex-col h-[600px]">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-lg font-semibold text-white">Input</h2>
+        <div class="flex gap-2">
+          <button onclick="pasteText()" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1 rounded-lg transition text-slate-300">Paste</button>
+          <button onclick="clearInput()" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1 rounded-lg transition text-slate-300">Clear</button>
+        </div>
+      </div>
+
+      <div id="task-tone-grid" class="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="text-xs text-slate-400 ml-1">Task</label>
+          <select id="task" class="w-full glass-input rounded-xl p-2.5 text-sm">
+            <option value="Rewrite">Rewrite</option>
+            <option value="Summarize">Summarize</option>
+            <option value="Proofread">Proofread</option>
+            <option value="Paraphrase">Paraphrase</option>
+          </select>
+        </div>
+        <div id="tone-container">
+          <label class="text-xs text-slate-400 ml-1">Tone</label>
+          <select id="tone" class="w-full glass-input rounded-xl p-2.5 text-sm">
+            <option value="Neutral">Neutral</option>
+            <option value="Professional">Professional</option>
+            <option value="Friendly">Friendly</option>
+            <option value="Concise">Concise</option>
+            <option value="Academic">Academic</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="text-xs text-slate-400 ml-1 mb-2 block">Inference Mode</label>
+        <div class="grid grid-cols-2 gap-3">
+          <button id="mode-base" class="model-mode-btn glass-input rounded-xl p-3 text-left transition-all hover:bg-white/10 border-2 border-transparent" onclick="selectMode('base')">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-sm font-semibold text-white">Base Model</span>
+              <i class="fas fa-microchip text-blue-400"></i>
+            </div>
+            <p class="text-[10px] text-slate-400">CPU/GPU • Fast • Reliable</p>
+            <span class="model-badge base mt-2">MediaPipe</span>
+          </button>
+          
+          <button id="mode-hybrid" class="model-mode-btn glass-input rounded-xl p-3 text-left transition-all hover:bg-white/10 border-2 border-transparent" onclick="selectMode('hybrid')">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-sm font-semibold text-white">Hybrid Mode</span>
+              <i class="fas fa-bolt text-purple-400"></i>
+            </div>
+            <p class="text-[10px] text-slate-400">GPU Enhanced • Higher Quality</p>
+            <span class="model-badge hybrid mt-2">Phi-3.5 Custom</span>
+          </button>
+        </div>
+        <p id="mode-warning" class="text-[10px] text-amber-400 mt-2 ml-1 hidden">
+          <i class="fas fa-exclamation-triangle mr-1"></i>
+          Hybrid mode requires discrete GPU. Integrated GPUs may cause issues.
+        </p>
+      </div>
+
+      <textarea id="input" class="w-full flex-1 glass-input rounded-xl p-4 resize-none mb-4 text-sm leading-relaxed" placeholder="Type or paste your text here..."></textarea>
+
+      <div class="flex justify-between text-xs text-slate-400 mt-2 px-1">
+        <span id="char-count">0 characters</span>
+        <span id="word-count">0 words</span>
+      </div>
+
+      <button id="submit" class="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-medium py-3 rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+        <span id="submit-text">Select Mode & Initialize</span>
+      </button>
+    </section>
+
+    <section class="flex flex-col gap-6 h-[600px]">
+      <div class="glass-panel rounded-2xl p-6 flex-1 flex flex-col relative overflow-hidden">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-semibold text-white">Refined Output</h2>
+          <button onclick="copyOutput()" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1 rounded-lg transition text-slate-300">
+            Copy
+          </button>
+        </div>
+        <textarea id="output" readonly class="w-full h-full bg-transparent text-slate-200 resize-none text-sm leading-relaxed overflow-auto" placeholder="Result will appear here..."></textarea>
+        <div id="loader" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-900/70 backdrop-blur-sm rounded-xl">
+          <div class="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+          <span class="text-purple-300 mb-3" id="loader-status">Processing...</span>
+          <div class="w-64 h-2 bg-slate-700 rounded-full overflow-hidden">
+            <div id="progress-bar" class="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-panel rounded-2xl p-5">
+        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Inference Telemetry</h3>
+        <div class="grid grid-cols-4 gap-3 text-center">
+          <div class="bg-white/5 rounded-xl p-3">
+            <p class="text-[10px] text-slate-400">Engine</p>
+            <p id="metric-engine" class="text-sm font-semibold text-white">--</p>
+          </div>
+          <div class="bg-white/5 rounded-xl p-3">
+            <p class="text-[10px] text-slate-400">Latency</p>
+            <p id="metric-time" class="text-sm font-semibold text-emerald-400">--</p>
+          </div>
+          <div class="bg-white/5 rounded-xl p-3">
+            <p class="text-[10px] text-slate-400">Quality</p>
+            <p id="metric-quality" class="text-sm font-semibold text-blue-400">--</p>
+          </div>
+          <div class="bg-white/5 rounded-xl p-3">
+            <p class="text-[10px] text-slate-400">Energy Est.</p>
+            <p id="metric-energy" class="text-sm font-semibold text-amber-400">--</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-panel rounded-2xl p-5">
+        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Quality Metrics</h3>
+        <div class="space-y-3">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-400">Clarity</span>
+              <span id="clarity-score" class="text-emerald-400">--</span>
+            </div>
+            <div class="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div id="clarity-bar" class="h-full bg-emerald-400 transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-400">Conciseness</span>
+              <span id="concise-score" class="text-blue-400">--</span>
+            </div>
+            <div class="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div id="concise-bar" class="h-full bg-blue-400 transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-400">Overall</span>
+              <span id="improvement-score" class="text-purple-400">--</span>
+            </div>
+            <div class="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div id="improvement-bar" class="h-full bg-purple-400 transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="w-full max-w-6xl mt-6 glass-panel rounded-2xl p-5">
+    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+      <i class="fas fa-server mr-2"></i>Hardware Configuration
+    </h3>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+      <div>
+        <p class="text-slate-500 mb-1">Platform</p>
+        <p id="hw-platform" class="text-white font-medium">--</p>
+      </div>
+      <div>
+        <p class="text-slate-500 mb-1">CPU Cores</p>
+        <p id="hw-cores" class="text-white font-medium">--</p>
+      </div>
+      <div>
+        <p class="text-slate-500 mb-1">Memory</p>
+        <p id="hw-memory" class="text-white font-medium">--</p>
+      </div>
+      <div>
+        <p class="text-slate-500 mb-1">GPU Support</p>
+        <p id="hw-gpu" class="text-white font-medium">--</p>
+      </div>
+    </div>
+    <p class="text-[10px] text-slate-500 mt-3">
+      <i class="fas fa-info-circle mr-1"></i>
+      All inference runs locally on this device. No data is transmitted externally.
+    </p>
+  </footer>
+
+  <script>
+    window.pasteText = async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        document.getElementById('input').value = text;
+      } catch (e) { alert("Clipboard access denied"); }
+    };
+    window.clearInput = () => {
+      document.getElementById('input').value = '';
+      document.getElementById('output').value = '';
+    };
+    window.copyOutput = () => {
+      const out = document.getElementById('output');
+      if (!out.value) return;
+      out.select();
+      document.execCommand('copy');
+    };
+  </script>
+
+  <script type="module" src="./index.js"></script>
+</body>
+</html>

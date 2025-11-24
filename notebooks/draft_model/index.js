@@ -59,7 +59,7 @@ async function runDemo() {
   try {
     llmInference = await LlmInference.createFromOptions(genaiFileset, {
       baseOptions: { modelAssetPath: modelFileName },
-      temperature: 0.9, // deterministic if <=0.5
+      temperature: 0.7, // deterministic if <=0.5
       topK: 20,         // restrict long tail creativity
       topP: 0.8,
       maxTokens: 600,
