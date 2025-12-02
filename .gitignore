@@ -1,1 +1,7 @@
 __pycache__/
+ui/other/
+notebooks/phi_model/*.gguf
+node_modules/
+*.log
+.DS_Store
+notebooks/OG/*.bin
