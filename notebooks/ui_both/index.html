@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EdgeWriter AI - Dual Engine</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: #020617;
+      background-image: 
+        radial-gradient(circle at 0% 0%, rgba(124, 58, 237, 0.15) 0, transparent 50%),
+        radial-gradient(circle at 100% 0%, rgba(219, 39, 119, 0.15) 0, transparent 50%),
+        radial-gradient(circle at 50% 100%, rgba(37, 99, 235, 0.15) 0, transparent 50%);
+      min-height: 100vh;
+      color: #f8fafc;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .blob {
+      position: absolute;
+      filter: blur(100px);
+      z-index: -1;
+      opacity: 0.4;
+      animation: float 20s infinite ease-in-out;
+      border-radius: 50%;
+    }
+    .blob-1 { top: -10%; left: -10%; width: 600px; height: 600px; background: #581c87; animation-delay: 0s; }
+    .blob-2 { top: 20%; right: -10%; width: 500px; height: 500px; background: #be185d; animation-delay: -5s; }
+    .blob-3 { bottom: -10%; left: 20%; width: 600px; height: 600px; background: #1e40af; animation-delay: -10s; }
+
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(30px, -50px) scale(1.05); }
+      66% { transform: translate(-20px, 20px) scale(0.95); }
+    }
+
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 
+        0 4px 6px -1px rgba(0, 0, 0, 0.1), 
+        0 2px 4px -1px rgba(0, 0, 0, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      border-radius: 1.5rem;
+    }
+
+    .glass-input {
+      background: rgba(2, 6, 23, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      color: #f1f5f9;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .glass-input:hover {
+      border-color: rgba(255, 255, 255, 0.1);
+      background: rgba(2, 6, 23, 0.6);
+    }
+    .glass-input:focus {
+      background: rgba(2, 6, 23, 0.8);
+      border-color: #8b5cf6;
+      outline: none;
+      box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15);
+    }
+
+    textarea::-webkit-scrollbar { width: 6px; }
+    textarea::-webkit-scrollbar-track { background: transparent; }
+    textarea::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+    textarea::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
+    select {
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+      background-position: right 0.75rem center;
+      background-repeat: no-repeat;
+      background-size: 1.25em 1.25em;
+      padding-right: 2.5rem;
+    }
+
+    .status-dot {
+      height: 10px; width: 10px; border-radius: 50%; display: inline-block;
+      position: relative;
+    }
+    .status-dot::after {
+      content: ''; position: absolute; top: -3px; left: -3px; right: -3px; bottom: -3px;
+      border-radius: 50%; opacity: 0.3; z-index: -1;
+    }
+    .status-dot.active { background-color: #4ade80; }
+    .status-dot.active::after { background-color: #4ade80; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
+    .status-dot.busy { background-color: #fbbf24; }
+    .status-dot.busy::after { background-color: #fbbf24; animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    .status-dot.error { background-color: #f87171; }
+    .status-dot.offline { background-color: #6b7280; }
+
+    @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+    @keyframes pulse { 50% { opacity: .5; } }
+
+    .model-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .model-badge.base {
+      background: rgba(59, 130, 246, 0.2);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .model-badge.phi3 {
+      background: rgba(168, 85, 247, 0.2);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+
+    .btn-glow {
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-glow::before {
+      content: '';
+      position: absolute;
+      top: 0; left: -100%; width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      transition: 0.5s;
+    }
+    .btn-glow:hover::before {
+      left: 100%;
+    }
+
+    .model-mode-btn.selected {
+      border-color: #8b5cf6 !important;
+      background: rgba(139, 92, 246, 0.1) !important;
+    }
+  </style>
+</head>
+<body class="p-4 md:p-8 flex flex-col items-center">
+
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+
+  <header class="w-full max-w-6xl mb-8 flex justify-between items-center glass-panel rounded-2xl p-6">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
+        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"></path></svg>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold tracking-tight text-white">EdgeWriter</h1>
+        <p class="text-xs text-slate-400">Dual-Engine • Fully Private</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <div class="hidden md:block text-right">
+        <p id="device-status" class="text-xs font-medium text-slate-300">Select a Model</p>
+        <p class="text-[10px] text-slate-500 uppercase tracking-wider">Engine Status</p>
+      </div>
+      <div id="status-indicator" class="status-dot offline"></div>
+    </div>
+  </header>
+
+  <main class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <section class="glass-panel rounded-2xl p-6 flex flex-col h-[700px]">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-lg font-semibold text-white">Input</h2>
+        <div class="flex gap-2">
+          <button onclick="pasteText()" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg transition text-slate-300">Paste</button>
+          <button onclick="clearAll()" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg transition text-slate-300">Clear</button>
+        </div>
+      </div>
+
+      <!-- Model Selection -->
+      <div class="mb-4">
+        <label class="text-xs text-slate-400 ml-1 mb-2 block">Select Model</label>
+        <div class="grid grid-cols-2 gap-3">
+          <button id="mode-base" class="model-mode-btn glass-input rounded-xl p-3 text-left transition-all hover:bg-white/10 border-2 border-transparent" onclick="selectMode('base')">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-sm font-semibold text-white">Base Model</span>
+              <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
+            </div>
+            <p class="text-[10px] text-slate-400">Browser-based • No Server</p>
+            <span class="model-badge base mt-2">MediaPipe (CPU/GPU)</span>
+            <p id="base-status" class="text-[10px] text-slate-500 mt-1">Click to initialize</p>
+          </button>
+          
+          <button id="mode-phi3" class="model-mode-btn glass-input rounded-xl p-3 text-left transition-all hover:bg-white/10 border-2 border-transparent" onclick="selectMode('phi3')">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-sm font-semibold text-white">Phi-3 Mini</span>
+              <svg class="w-5 h-5 text-purple-400" fill="currentColor" viewBox="0 0 20 20"><path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"></path></svg>
+            </div>
+            <p class="text-[10px] text-slate-400">Local Server • GPU Accelerated</p>
+            <span class="model-badge phi3 mt-2">Fine-tuned Q8</span>
+            <p id="phi3-status" class="text-[10px] text-slate-500 mt-1">Requires server.py</p>
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="text-xs text-slate-400 ml-1">Task</label>
+          <select id="task" class="w-full glass-input rounded-xl p-2.5 text-sm">
+            <option value="Rewrite">Rewrite</option>
+            <option value="Summarize">Summarize</option>
+            <option value="Proofread">Proofread</option>
+            <option value="Paraphrase">Paraphrase</option>
+          </select>
+        </div>
+        <div id="tone-container">
+          <label class="text-xs text-slate-400 ml-1">Tone</label>
+          <select id="tone" class="w-full glass-input rounded-xl p-2.5 text-sm">
+            <option value="Neutral">Neutral</option>
+            <option value="Professional">Professional</option>
+            <option value="Friendly">Friendly</option>
+            <option value="Concise">Concise</option>
+            <option value="Academic">Academic</option>
+            <option value="Custom">Custom</option>
+          </select>
+          <input id="custom-tone-input" type="text" class="hidden w-full glass-input rounded-xl p-2.5 text-sm mt-2 placeholder-slate-500" placeholder="Describe style (e.g. 'Like a pirate')">
+        </div>
+      </div>
+
+      <textarea id="input" class="w-full flex-1 glass-input rounded-xl p-4 resize-none mb-4 text-sm leading-relaxed" placeholder="Type or paste your text here..."></textarea>
+
+      <div class="flex justify-between text-xs text-slate-400 mt-2 px-1 mb-4">
+        <span id="char-count">0 characters</span>
+        <span id="word-count">0 words</span>
+        <span id="token-est">~0 tokens</span>
+      </div>
+
+      <button id="submit" class="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-medium py-3 rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 btn-glow">
+        <span id="submit-text">Select a Model</span>
+        <div id="spinner" class="hidden w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
+      </button>
+    </section>
+
+    <section class="flex flex-col gap-4 h-[700px]">
+      <div class="glass-panel rounded-2xl p-6 flex-1 flex flex-col relative overflow-hidden">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-semibold text-white">Refined Output</h2>
+          <button onclick="copyOutput()" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg transition text-slate-300">
+            Copy
+          </button>
+        </div>
+        <textarea id="output" readonly class="w-full flex-1 bg-transparent text-slate-200 resize-none text-sm leading-relaxed overflow-auto focus:outline-none" placeholder="Result will appear here..."></textarea>
+        <div id="loader" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-900/70 backdrop-blur-sm rounded-xl">
+          <div class="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+          <span class="text-purple-300 mb-3" id="loader-status">Processing...</span>
+          <div class="w-64 h-2 bg-slate-700 rounded-full overflow-hidden">
+            <div id="progress-bar" class="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-panel rounded-2xl p-5">
+        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Inference Telemetry</h3>
+        <div class="grid grid-cols-4 gap-3 text-center">
+          <div class="bg-white/5 rounded-xl p-3">
+            <p class="text-[10px] text-slate-400">Engine</p>
+            <p id="metric-engine" class="text-sm font-semibold text-white">--</p>
+          </div>
+          <div class="bg-white/5 rounded-xl p-3">
+            <p class="text-[10px] text-slate-400">Latency</p>
+            <p id="metric-time" class="text-sm font-semibold text-emerald-400">--</p>
+          </div>
+          <div class="bg-white/5 rounded-xl p-3">
+            <p class="text-[10px] text-slate-400">Tokens</p>
+            <p id="metric-tokens" class="text-sm font-semibold text-purple-400">--</p>
+          </div>
+          <div class="bg-white/5 rounded-xl p-3">
+            <p class="text-[10px] text-slate-400">Energy Est.</p>
+            <p id="metric-energy" class="text-sm font-semibold text-amber-400">--</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quality Metrics -->
+      <div class="glass-panel rounded-2xl p-5">
+        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Quality Metrics</h3>
+        <div class="space-y-3">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-400">Clarity</span>
+              <span id="clarity-score" class="text-emerald-400">--</span>
+            </div>
+            <div class="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div id="clarity-bar" class="h-full bg-emerald-400 transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-400">Conciseness</span>
+              <span id="concise-score" class="text-blue-400">--</span>
+            </div>
+            <div class="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div id="concise-bar" class="h-full bg-blue-400 transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-400">Overall</span>
+              <span id="improvement-score" class="text-purple-400">--</span>
+            </div>
+            <div class="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div id="improvement-bar" class="h-full bg-purple-400 transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Hardware Information Footer -->
+  <footer class="w-full max-w-6xl mt-6 glass-panel rounded-2xl p-5">
+    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+      <svg class="w-3 h-3 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 01-2 2v4a2 2 0 012 2h14a2 2 0 012-2v-4a2 2 0 01-2-2m-2-4h.01M17 16h.01"></path></svg>
+      Hardware Configuration
+    </h3>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+      <div>
+        <p class="text-slate-500 mb-1">Platform</p>
+        <p id="hw-platform" class="text-white font-medium">--</p>
+      </div>
+      <div>
+        <p class="text-slate-500 mb-1">CPU Cores</p>
+        <p id="hw-cores" class="text-white font-medium">--</p>
+      </div>
+      <div>
+        <p class="text-slate-500 mb-1">Memory</p>
+        <p id="hw-memory" class="text-white font-medium">--</p>
+      </div>
+      <div>
+        <p class="text-slate-500 mb-1">GPU Support</p>
+        <p id="hw-gpu" class="text-white font-medium">--</p>
+      </div>
+    </div>
+    <p class="text-[10px] text-slate-500 mt-3">
+      <svg class="w-3 h-3 mr-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+      All inference runs locally on this device. No data is transmitted externally.
+    </p>
+  </footer>
+
+  <script type="module" src="./index.js"></script>
+</body>
+</html>
