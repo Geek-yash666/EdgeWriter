@@ -26,7 +26,7 @@ app.add_middleware(
 
 # === CONFIG ===
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PHI_MODEL_DIR = os.path.join(SCRIPT_DIR, "..", "phi_model")
+PHI_MODEL_DIR = os.path.join(SCRIPT_DIR, "..", "phi_model_UI")
 MODEL_PATH = os.path.join(PHI_MODEL_DIR, "phi3-writing-Q8.gguf")
 
 print("=" * 50)

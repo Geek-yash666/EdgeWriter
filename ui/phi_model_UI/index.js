@@ -147,7 +147,7 @@ async function generate() {
     if (!connected) {
       updateProgress(0, "Server offline");
       loader.classList.add('hidden');
-      alert("Could not connect to server.\n\nPlease ensure server.py is running:\n  cd notebooks/phi_model\n  python server.py");
+      alert("Could not connect to server.\n\nPlease ensure server.py is running:\n  cd ui/phi_model_UI\n  python server.py");
       return;
     }
     loader.classList.add('hidden');
@@ -234,7 +234,7 @@ async function generate() {
     console.error("❌ [EdgeWriter] Generation error:", err);
     console.error("Error details:", err.message);
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    output.value = "Error: Could not connect to local model.\n\nPlease ensure server.py is running:\n  cd notebooks/phi_model\n  python server.py";
+    output.value = "Error: Could not connect to local model.\n\nPlease ensure server.py is running:\n  cd ui/phi_model_UI\n  python server.py";
     deviceStatus.textContent = "Connection Error";
     statusIndicator.className = "status-dot error";
     isServerReady = false;

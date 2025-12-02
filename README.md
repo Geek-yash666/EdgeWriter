@@ -1,17 +1,15 @@
-    
-
 # EdgeWriter
 
 An offline, on-device AI writing assistant for summarization, rewriting, proofreading, and paraphrasing. EdgeWriter uses a dual-model architecture with speculative decoding to provide fast, accurate text generation that runs entirely on your device - no internet required.
 
 ## Project Overview
 
-EdgeWriter implements a **speculative decoding architecture** that adapts to your hardware:
+EdgeWriter implements a **speculative decoding architecture** that adapts to whatever compute you have available:
 
-- **CPU-only mode**: Uses a lightweight draft model for fast token generation (<5 seconds, ~2GB RAM)
-- **GPU-accelerated mode**: Combines the draft model with a fine-tuned base model for higher accuracy through token verification.
+- **Browser draft engine**: A MediaPipe LLM (`ui/nano_model_UI/weights.bin`) that always runs locally in the browser. It happily runs on CPU-only systems and opportunistically uses GPU when the browser exposes it.
+- **Phi-3 verifier**: A llama.cpp server (`ui/phi_model_UI/server.py`) that loads a fine-tuned Phi-3 GGUF checkpoint. It automatically takes advantage of GPU layers for better accuracy.
 
-This architecture enables efficient on-device inference across a range of hardware configurations.
+This layered design keeps the entire workflow fully offline while still scaling up when extra hardware is present.
 
 ## Architecture
 
@@ -20,7 +18,8 @@ This architecture enables efficient on-device inference across a range of hardwa
 - **Foundation**: Microsoft Phi-3-mini-4k-instruct
 - **Fine-tuning**: LoRA (Low-Rank Adaptation)
 - **Quantization**: Q4 quantization for efficient deployment
-- **Interface**: Gradio web UI for interactive testing
+- **Interface**: FastAPI UI in `ui/Integrated_UI`/`ui/phi_model_UI` plus the original Gradio notebook for experiments
+- **Runtime**: llama.cpp backend that prefers GPU layers but transparently runs on CPU-only systems
 
 ### Draft Model
 
@@ -28,6 +27,7 @@ This architecture enables efficient on-device inference across a range of hardwa
 - **Implementation**: JavaScript (MediaPipe LLM Inference)
 - **Deployment**: Browser-based, runs via WebAssembly
 - **Performance**: <5 sec generation, ~2GB RAM usage
+- **Hardware**: Requires only a CPU; automatically enables WebGPU when the browser exposes it
 
 ### Speculative Decoding Pipeline
 
@@ -66,36 +66,44 @@ The fine-tuned base model was evaluated using standard NLP metrics:
 
 ## Quick Start
 
-### Running the Draft Model (Browser-based)
+### Dual-Engine UI (Recommended)
 
-1. **Navigate to the draft model directory:**
-
-   ```bash
-   cd EdgeWriter/notebooks/draft_model
-   ```
-2. **Ensure `weights.bin` is present** in this directory.
-3. **Start a local web server:**
+1. **Navigate to the integrated UI:**
 
    ```bash
-   python -m http.server 8000
+   cd EdgeWriter/ui/Integrated_UI
    ```
-4. **Open in browser:**
-   Navigate to `http://localhost:8000` in your web browser.
+2. **Verify model assets**
 
-The draft model runs entirely in your browser using JavaScript and WebAssembly—no Python installation needed for inference!
+   - Draft weights: `../nano_model_UI/weights.bin`
+   - Phi-3 checkpoint: `../phi_model_UI/phi3-writing-Q8.gguf`
+3. **Launch the server**
 
-### Running the Base Model (GPU-accelerated)
+   - Windows: `start_dual_ui.bat`
+   - Cross-platform: `python server.py`
+4. **Open the app:** The script auto-opens `http://127.0.0.1:8000`. The MediaPipe draft model always runs, even on CPU-only systems, and the Phi-3 verifier joins in when its server process is active.
 
-1. **Set up the Python environment** (see Installation section below).
-2. **Open the base model notebook:**
+### Browser-only Draft UI
 
-   ```bash
-   jupyter lab
-   ```
+If you only need the lightweight MediaPipe model (or do not want to run the Phi-3 server yet):
 
-   Navigate to `notebooks/base_model/Phi3_finetuned_base_model.ipynb`.
-3. **Run the Gradio cell** to launch the interactive interface.
-4. **Access via browser** at the provided local URL (typically `http://localhost:7860`).
+```bash
+cd EdgeWriter/ui/nano_model_UI
+py -m http.server 8000   # or use start_server.bat on Windows
+```
+
+Then navigate to `http://127.0.0.1:8000`. This mode is entirely browser-based and needs no Python packages.
+
+### Phi-3 Only UI
+
+Run the fine-tuned Phi-3 interface directly when you want the highest-quality generations without the draft model shell:
+
+```bash
+cd EdgeWriter/ui/phi_model_UI
+python server.py          # start_web_ui.bat is also available on Windows
+```
+
+The FastAPI server serves both the HTML UI and the inference API at `http://127.0.0.1:8000`, automatically using GPU layers when available and CPU otherwise.
 
 ### Example Output
 
@@ -142,18 +150,26 @@ Here's an example of the base model performing a proofreading task:
 
 ```
 EdgeWriter/
-├── notebooks/
-│   ├── base_model/              # Fine-tuned Phi-3 model
-│   │   └── Phi3_finetuned_base_model.ipynb
-│   └── draft_model/             # Browser-based draft model
-│       ├── index.html           # Web UI
-│       ├── index.js             # JavaScript inference
-│       └── weights.bin          # Model weights
-├── data/                        # Dataset processing notebooks
-|-- docs/                        # Architecture/ Inference Screenshots
-├── results/                     # Training outputs and metrics
-├── environment.yml              # Conda environment
-├── requirements.txt             # Pip dependencies
+├── data/                         # Dataset preparation notebooks
+│   └── data.ipynb
+├── docs/                         # Architecture notes & screenshots
+├── notebooks/                    # Research + export notebooks
+│   ├── Phi3_finetuned_base_model.ipynb
+│   ├── Transformers_to_onnx.ipynb
+│   └── Transformers_to_web_llm_mlc.ipynb
+├── results/                      # Training/eval artifacts
+├── ui/                           # All deployment-ready user interfaces
+│   ├── Integrated_UI/            # Dual-engine UI + FastAPI server
+│   │   ├── index.html / index.js
+│   │   ├── server.py
+│   │   └── start_dual_ui.bat
+│   ├── nano_model_UI/            # Browser-only MediaPipe UI (weights.bin)
+│   ├── phi_model_UI/             # Standalone Phi-3 FastAPI UI (phi3-writing-Q8.gguf)
+│   ├── OG/                       # Legacy UI experiments
+│   ├── Test/                     # Scratch UI variations
+│   └── other/                    # Utility launchers & prototypes
+├── environment.yml               # Conda environment definition
+├── requirements.txt              # Pip dependencies
 └── README.md
 ```
 

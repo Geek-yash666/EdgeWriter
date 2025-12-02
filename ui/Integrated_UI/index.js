@@ -42,7 +42,7 @@ const baseStatus = document.getElementById('base-status');
 const phi3Status = document.getElementById('phi3-status');
 
 // === Config ===
-const MEDIAPIPE_MODEL = '../base_model/weights.bin';
+const MEDIAPIPE_MODEL = '../nano_model_UI/weights.bin';
 const PHI3_SERVER_URL = ''; // Same origin - server.py serves both UI and API
 
 // === State ===
@@ -505,7 +505,7 @@ async function generate() {
     loader.classList.add('hidden');
     
     if (!connected) {
-      alert("Phi-3 server is not running.\n\nPlease start it with:\n  cd phi_model\n  python server.py");
+      alert("Phi-3 server is not running.\n\nPlease start it with:\n  cd ui/Integrated_UI\n  python server.py");
       return;
     }
     

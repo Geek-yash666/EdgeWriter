@@ -40,8 +40,8 @@ pip install fastapi uvicorn llama-cpp-python
 ```
 
 ### Model Files
-- `../base_model/weights.bin` - MediaPipe model (loaded in browser)
-- `../phi_model/phi3-writing-Q8.gguf` - Phi-3 model (loaded by server)
+- `../nano_model_UI/weights.bin` - MediaPipe model (loaded in browser)
+- `../phi_model_UI/phi3-writing-Q8.gguf` - Phi-3 model (loaded by server)
 
 ## Features
 
