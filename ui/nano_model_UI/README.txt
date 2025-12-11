@@ -1,3 +1,5 @@
 to run:
 
-py -m http.server
+run start_server.bat
+OR
+python server.py

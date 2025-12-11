@@ -11,8 +11,18 @@ echo Features:
 echo   - Base Model (MediaPipe in browser)
 echo   - Phi-3 Mini (local GPU inference)
 echo.
-echo Press Ctrl+C to stop the server.
-echo ========================================
-echo.
-
-python server.py
+py server.py 2>nul
+if %errorlevel% neq 0 (
+	echo py command not found, trying python...
+	python server.py 2>nul
+	if %errorlevel% neq 0 (
+		echo python command not found, trying python3...
+		python3 server.py 2>nul
+		if %errorlevel% neq 0 (
+			echo.
+			echo ERROR: Python not found. Please install Python and add it to PATH.
+			pause
+			exit /b 1
+		)
+	)
+)
