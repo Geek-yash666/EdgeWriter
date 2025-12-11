@@ -36,6 +36,11 @@ let mediapipeLLM = null;
 let isInitialized = false;
 let gpuSupportProbe = null;
 let systemPromptText = "System: You are a helpful assistant.";
+// Low-resource controls
+let maxTokenLimit = 4096;
+let lowResourceMode = false;
+let integratedOnly = false; // new flag for iGPU-only systems
+let hardwareDetectionComplete = false; // Track if detection is done
 
 // Hardware info elements
 const hwPlatform = document.getElementById('hw-platform');
@@ -59,8 +64,21 @@ let chatHistory = [];
 let isProcessing = false; // Global flag for generation state
 let stopRequested = false; // Flag to trigger stop
 
+// Disable chat entirely in low-resource mode
+function disableChatMode() {
+  currentMode = 'writing';
+  chatModeBtn.style.display = 'none';
+  chatSection.classList.add('hidden');
+  outputSection.classList.remove('hidden');
+  writingSection.classList.remove('hidden');
+}
+
 // Mode switching
 function switchMode(mode) {
+  if (lowResourceMode && mode === 'chat') {
+    alert('Chat is disabled on low-resource devices.');
+    return;
+  }
   currentMode = mode;
   
   if (mode === 'writing') {
@@ -244,6 +262,10 @@ async function sendChatMessage() {
     return;
   }
 
+  if (lowResourceMode) {
+    alert('Chat is disabled on low-resource devices.');
+    return;
+  }
   const message = chatInput.value.trim();
   if (!message || !isInitialized) return;
   
@@ -271,8 +293,9 @@ async function sendChatMessage() {
   // Ensure context doesn't exceed model limits
   try {
     if (mediapipeLLM.sizeInTokens) {
+      const safeLimit = Math.max(512, Math.floor(maxTokenLimit * 0.85));
       const tokenCount = mediapipeLLM.sizeInTokens(prompt);
-      if (tokenCount > 3500) { 
+      if (tokenCount > safeLimit) { 
         removeTypingIndicator();
         addChatMessage('assistant', '⚠️ Conversation history is too long. Please clear history to continue.');
         chatInput.disabled = false;
@@ -366,8 +389,7 @@ function applyForceHighPerformanceFlag() {
   } catch (err) {
     console.warn('[GPU] Applying force_high_performance_gpu failed:', err);
   }
-  console.info('[GPU] Browser detected. To force dGPU, launch the browser with --force-high-performance-gpu or set OS graphics preference to High Performance.');
-}
+ }
 
 async function detectHardware() {
   // Platform detection
@@ -429,7 +451,9 @@ async function detectHardware() {
   
   // GPU support check
   const gpuSupport = await evaluateGpuDelegateSupport();
-
+  integratedOnly = !hasDedicatedGpu; // set flag based on detection
+  
+  console.log(`Hardware detection: hasDedicatedGpu=${hasDedicatedGpu}, integratedOnly=${integratedOnly}`);
   // Update RAM display
   if (typeof serverRamGB === 'number' && !Number.isNaN(serverRamGB)) {
     hwMemory.textContent = `${serverRamGB} GB`;
@@ -476,6 +500,17 @@ async function detectHardware() {
     hwGpu.textContent = gpuSupport.reason || 'Not Available';
     hwGpu.classList.add('text-amber-400');
   }
+
+  // Low-resource rule: ≤8 GB RAM AND no dedicated GPU
+  const ramValue = (typeof serverRamGB === 'number' ? serverRamGB : reportedRam);
+  if (ramValue && ramValue <= 8 && !hasDedicatedGpu) {
+    lowResourceMode = true;
+    maxTokenLimit = 2048;
+    disableChatMode();
+    console.warn('Low-resource mode enabled: max tokens set to 2048 and chat disabled.');
+  }
+  
+  hardwareDetectionComplete = true;
 }
 
 function showGpuGuidanceBanner(gpuName, osName, availableGpus = []) {
@@ -799,6 +834,11 @@ async function cacheModel(response) {
 }
 
 async function init() {
+  // Wait for hardware detection to complete
+  if (!hardwareDetectionComplete) {
+    await detectHardware();
+  }
+  
   loader.classList.remove('hidden');
   submit.disabled = true;
   submitText.textContent = "Loading Model...";
@@ -862,8 +902,8 @@ async function init() {
     let usedGpu = false;
     let finalStatus = '';
 
-    // Check if model fits in GPU buffer
     let canUseGpu = gpuSupport.ok;
+    
     if (canUseGpu && modelSize > 0 && gpuSupport.limits) {
         const maxBuffer = gpuSupport.limits.maxBufferSize || 0;
         if (modelSize > maxBuffer) {
@@ -875,10 +915,11 @@ async function init() {
 
     if (canUseGpu) {
       updateProgress(60, "Initializing model on GPU...");
+      console.log('Attempting GPU initialization...');
       try {
         mediapipeLLM = await LlmInference.createFromOptions(genaiFileset, {
           baseOptions: { modelAssetPath: modelPath, delegate: 'GPU' },
-          maxTokens: 4096,
+          maxTokens: maxTokenLimit,
           temperature: 0.5,
           topK: 40
         });
@@ -898,7 +939,7 @@ async function init() {
       }
       mediapipeLLM = await LlmInference.createFromOptions(genaiFileset, {
         baseOptions: { modelAssetPath: modelPath, delegate: 'CPU' },
-        maxTokens: 4096,
+        maxTokens: maxTokenLimit,
         temperature: 0.5,
         topK: 40
       });
@@ -970,10 +1011,11 @@ submit.onclick = async () => {
 
   try {
     if (mediapipeLLM.sizeInTokens) {
+      const safeLimit = Math.max(512, Math.floor(maxTokenLimit * 0.95));
       const tokenCount = mediapipeLLM.sizeInTokens(fullPrompt);
       console.log("Token count:", tokenCount);
-      if (tokenCount > 4000) {
-        alert(`Input is too long! (${tokenCount} tokens). The maximum allowed is 4000 tokens. Please reduce the text length.`);
+      if (tokenCount > safeLimit) {
+        alert(`Input is too long! (${tokenCount} tokens). The maximum allowed is ${safeLimit} tokens for this device. Please reduce the text length.`);
         return;
       }
     }
@@ -1059,5 +1101,10 @@ if (taskSelect.value !== 'Rewrite') {
 }
 updateCounters();
 submit.disabled = false;
-applyForceHighPerformanceFlag();
-detectHardware();
+
+// Initialize hardware detection on page load (single call)
+(async () => {
+  applyForceHighPerformanceFlag();
+  await detectHardware();
+  console.log(`Hardware detection complete: integratedOnly=${integratedOnly}, lowResourceMode=${lowResourceMode}`);
+})();
