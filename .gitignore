@@ -7,3 +7,5 @@ ui/Test/
 ui/nano_model_UI/*.bin
 ui/phi_model_UI/*.gguf
 ui/OG/*.bin
+Experiments.txt
+ISSUES.md
