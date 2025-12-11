@@ -2,6 +2,10 @@
 const input = document.getElementById("input");
 const output = document.getElementById("output");
 const taskSelect = document.getElementById("task");
+const toneSelect = document.getElementById("tone");
+const toneContainer = document.getElementById("tone-container");
+const customToneInput = document.getElementById("custom-tone");
+const customToneContainer = document.getElementById("custom-tone-container");
 const generateBtn = document.getElementById("generate-btn");
 const btnText = document.getElementById("btn-text");
 const spinner = document.getElementById("spinner");
@@ -11,12 +15,27 @@ const loader = document.getElementById("loader");
 const loaderStatus = document.getElementById("loader-status");
 const progressBar = document.getElementById("progress-bar");
 
+// Mode + chat elements
+const writingModeBtn = document.getElementById("writing-mode-btn");
+const chatModeBtn = document.getElementById("chat-mode-btn");
+const writingWrapper = document.getElementById("writing-wrapper");
+const chatSection = document.getElementById("chat-section");
+const chatMessages = document.getElementById("chat-messages");
+const chatInput = document.getElementById("chat-input");
+const chatSend = document.getElementById("chat-send");
+const chatClear = document.getElementById("chat-clear");
+
+// API endpoints
+const API_BASE = "https://banded-idella-premorbidly.ngrok-free.dev";
+const HEALTH_URL = `${API_BASE}/health`;
+const GENERATE_URL = `${API_BASE}/generate`;
+const CHAT_URL = `${API_BASE}/chat`;
+
 // Telemetry elements
 const metricEngine = document.getElementById("metric-engine");
 const metricTime = document.getElementById("metric-time");
 const metricPromptTokens = document.getElementById("metric-prompt-tokens");
 const metricCompletionTokens = document.getElementById("metric-completion-tokens");
-const rawOutput = document.getElementById("raw-output");
 
 // Counter elements
 const charCount = document.getElementById("char-count");
@@ -24,6 +43,9 @@ const wordCount = document.getElementById("word-count");
 const tokenEst = document.getElementById("token-est");
 
 let isServerReady = false;
+let currentMode = 'writing';
+let chatHistory = [];
+let isChatProcessing = false;
 
 // Update counters
 function updateCounts() {
@@ -52,32 +74,211 @@ function updateProgress(percent, status = 'Processing...') {
   loaderStatus.textContent = status;
 }
 
+function updateToneVisibility() {
+  if (taskSelect.value === 'Rewrite') {
+    toneContainer.style.display = 'block';
+    if (toneSelect.value === 'Custom') {
+      customToneContainer.style.display = 'block';
+    } else {
+      customToneContainer.style.display = 'none';
+    }
+  } else {
+    toneContainer.style.display = 'none';
+    customToneContainer.style.display = 'none';
+  }
+}
+
+function setChatControlsEnabled(enabled) {
+  chatInput.disabled = !enabled;
+  chatSend.disabled = !enabled;
+  chatClear.disabled = !enabled;
+}
+
+function switchMode(mode) {
+  currentMode = mode;
+  if (mode === 'writing') {
+    writingModeBtn.className = 'flex-1 px-4 py-2 rounded-xl font-medium transition bg-gradient-to-r from-purple-500 to-pink-500 text-white';
+    chatModeBtn.className = 'flex-1 px-4 py-2 rounded-xl font-medium transition bg-white/5 text-slate-300 hover:bg-white/10';
+    writingWrapper.classList.remove('hidden');
+    chatSection.classList.add('hidden');
+  } else {
+    chatModeBtn.className = 'flex-1 px-4 py-2 rounded-xl font-medium transition bg-gradient-to-r from-purple-500 to-pink-500 text-white';
+    writingModeBtn.className = 'flex-1 px-4 py-2 rounded-xl font-medium transition bg-white/5 text-slate-300 hover:bg-white/10';
+    writingWrapper.classList.add('hidden');
+    chatSection.classList.remove('hidden');
+    if (isServerReady) setChatControlsEnabled(true);
+  }
+}
+
+function addChatMessage(role, content, isGenerating = false, useMarkdown = false) {
+  const div = document.createElement('div');
+  div.className = `chat-bubble ${role}${isGenerating ? ' generating' : ''}`;
+  if (useMarkdown && role === 'assistant') {
+    div.innerHTML = renderMarkdownBasic(content);
+  } else {
+    div.textContent = content;
+  }
+  const placeholder = chatMessages.querySelector('.text-center');
+  if (placeholder) placeholder.remove();
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  return div;
+}
+
+function addTypingIndicator() {
+  const typing = document.createElement('div');
+  typing.className = 'chat-bubble assistant';
+  typing.id = 'typing-indicator';
+  typing.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+  chatMessages.appendChild(typing);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  const typing = document.getElementById('typing-indicator');
+  if (typing) typing.remove();
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderMarkdownBasic(text) {
+  if (!text) return '';
+
+  const codeBlocks = [];
+  let working = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const preservedCode = code.replace(/\s+$/, '');
+    codeBlocks.push({ lang, code: preservedCode });
+    return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
+  });
+
+  working = escapeHtml(working);
+
+  const inlineCode = [];
+  working = working.replace(/`([^`]+)`/g, (_, code) => {
+    inlineCode.push(code);
+    return `__INLINE_CODE_${inlineCode.length - 1}__`;
+  });
+
+  working = working.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  working = working.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+  working = working.replace(/^### (.*$)/gm, '<h3 class="text-lg font-bold mt-2">$1</h3>');
+  working = working.replace(/^## (.*$)/gm, '<h2 class="text-xl font-bold mt-3">$1</h2>');
+  working = working.replace(/^# (.*$)/gm, '<h1 class="text-2xl font-bold mt-4">$1</h1>');
+
+  working = working.replace(/^\s*[-•*]\s+(.*$)/gm, '<li class="ml-4 list-disc">$1</li>');
+  working = working.replace(/((?:<li.*<\/li>\n?)+)/g, '<ul class="my-2">$1</ul>');
+
+  working = working.replace(/__INLINE_CODE_(\d+)__/g, (_, id) => {
+    return `<code class="bg-slate-700 px-1 rounded text-sm">${inlineCode[id]}</code>`;
+  });
+
+  working = working.replace(/__CODE_BLOCK_(\d+)__/g, (_, id) => {
+    const block = codeBlocks[id];
+    const langClass = block.lang ? ` class="language-${block.lang}"` : '';
+    const safeCode = escapeHtml(block.code);
+    return `<pre class="bg-slate-800 p-3 rounded-lg my-2 overflow-x-auto text-xs"><code${langClass}>${safeCode}</code></pre>`;
+  });
+
+  working = working.replace(/\n\n+/g, '<br><br>');
+  working = working.replace(/\n/g, '<br>');
+
+  return working;
+}
+
 // Detect hardware
 async function detectHardware() {
+  // Platform detection
   const platform = navigator.platform || 'Unknown';
-  const cores = navigator.hardwareConcurrency || 'Unknown';
+  const userAgent = navigator.userAgent;
+  let osName = 'Unknown';
   
-  let memory = 'Unknown';
+  if (userAgent.includes('Windows')) osName = 'Windows';
+  else if (userAgent.includes('Mac')) osName = 'macOS';
+  else if (userAgent.includes('Linux')) osName = 'Linux';
+  else if (userAgent.includes('Android')) osName = 'Android';
+  else if (userAgent.includes('iOS') || userAgent.includes('iPhone') || userAgent.includes('iPad')) osName = 'iOS';
+  
+  document.getElementById('hw-platform').textContent = osName;
+  
+  // CPU cores
+  const cores = navigator.hardwareConcurrency || 'N/A';
+  document.getElementById('hw-cores').textContent = cores !== 'N/A' ? `${cores} cores` : 'N/A';
+  
+  // Memory
+  let reportedRam = null;
   if (navigator.deviceMemory) {
-    memory = `${navigator.deviceMemory} GB`;
+    reportedRam = navigator.deviceMemory;
   }
+
+  let serverGpuName = null;
+  let serverRamGB = null;
+  let serverGpuMemory = null;
   
-  let gpu = 'Not Available';
-  if (navigator.gpu) {
-    try {
-      const adapter = await navigator.gpu.requestAdapter();
-      if (adapter) {
-        gpu = 'WebGPU Available';
+  try {
+    const response = await fetch('/api/gpu-info');
+    if (response.ok) {
+      const data = await response.json();
+      if (data.gpus && data.gpus.length > 0) {
+        serverGpuName = data.gpus[0].name;
+        serverGpuMemory = data.gpus[0].memory;
+        serverRamGB = data.ramGB || serverRamGB;
+        console.log('✓ Server detected GPUs:', data.gpus);
+        console.log(`  GPU: ${serverGpuName}`);
+        if (serverGpuMemory && serverGpuMemory !== 'Unknown') {
+          console.log(`  VRAM: ${serverGpuMemory}`);
+        }
       }
-    } catch (e) {
-      gpu = 'WebGPU Not Supported';
+      if (data.ramGB) {
+          serverRamGB = data.ramGB;
+          console.log(`  RAM: ${serverRamGB} GB`);
+      }
     }
+  } catch (e) {
+    console.log('⚠ Server GPU detection not available:', e.message);
   }
   
-  document.getElementById('hw-platform').textContent = platform;
-  document.getElementById('hw-cores').textContent = cores;
-  document.getElementById('hw-memory').textContent = memory;
-  document.getElementById('hw-gpu').textContent = gpu;
+  // Update RAM display
+  const hwMemory = document.getElementById('hw-memory');
+  if (typeof serverRamGB === 'number' && !Number.isNaN(serverRamGB)) {
+    hwMemory.textContent = `${serverRamGB} GB`;
+    hwMemory.classList.add('text-emerald-400');
+  } else if (reportedRam) {
+    hwMemory.textContent = `~${reportedRam} GB`;
+  } else {
+    hwMemory.textContent = 'Unknown';
+  }
+
+  // Update GPU display
+  const hwGpu = document.getElementById('hw-gpu');
+  if (serverGpuName) {
+    hwGpu.textContent = serverGpuName;
+    hwGpu.classList.add('text-emerald-400');
+    if (serverGpuMemory && serverGpuMemory !== 'Unknown') {
+       hwGpu.title = `Memory: ${serverGpuMemory}`;
+    }
+  } else {
+    // Fallback to WebGPU detection if server info fails
+    let gpu = 'Not Available';
+    if (navigator.gpu) {
+        try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (adapter) {
+            gpu = 'WebGPU Available';
+        }
+        } catch (e) {
+        gpu = 'WebGPU Not Supported';
+        }
+    }
+    hwGpu.textContent = gpu;
+  }
 }
 
 // Check server status
@@ -87,8 +288,8 @@ async function checkServerStatus() {
   statusIndicator.className = "status-dot busy";
   
   try {
-    console.log("📡 [EdgeWriter] Attempting to connect to http://127.0.0.1:8000/health");
-    const res = await fetch("http://127.0.0.1:8000/health", {
+    console.log("📡 [EdgeWriter] Attempting to connect to health endpoint...");
+    const res = await fetch(HEALTH_URL, {
       method: "GET",
       signal: AbortSignal.timeout(3000)
     });
@@ -101,12 +302,13 @@ async function checkServerStatus() {
       statusIndicator.className = "status-dot active";
       btnText.textContent = "Generate";
       generateBtn.disabled = false;
+      setChatControlsEnabled(true);
       return true;
     }
   } catch (e) {
     console.log("⚠️ [EdgeWriter] Health endpoint failed, trying generate endpoint...", e.message);
     try {
-      const testRes = await fetch("http://127.0.0.1:8000/generate", {
+      const testRes = await fetch(GENERATE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ task: "Proofread", text: "test" }),
@@ -120,6 +322,7 @@ async function checkServerStatus() {
         statusIndicator.className = "status-dot active";
         btnText.textContent = "Generate";
         generateBtn.disabled = false;
+        setChatControlsEnabled(true);
         return true;
       }
     } catch (e2) {
@@ -133,6 +336,7 @@ async function checkServerStatus() {
   statusIndicator.className = "status-dot error";
   btnText.textContent = "Server Offline - Click to Retry";
   generateBtn.disabled = false;
+  setChatControlsEnabled(false);
   return false;
 }
 
@@ -161,10 +365,13 @@ async function generate() {
   }
 
   const task = taskSelect.value;
+  const tone = toneSelect.value;
+  const customTone = customToneInput.value.trim();
 
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("🚀 [EdgeWriter] Starting generation...");
   console.log(`📋 Task: ${task}`);
+  if (task === 'Rewrite') console.log(`🎨 Tone: ${tone}${tone === 'Custom' ? ` (${customTone})` : ''}`);
   console.log(`📝 Input length: ${text.length} chars, ~${Math.ceil(text.split(/\s+/).length * 1.35)} tokens`);
   console.log(`📄 Input preview: "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"`);
 
@@ -183,7 +390,6 @@ async function generate() {
   metricTime.textContent = "--";
   metricPromptTokens.textContent = "--";
   metricCompletionTokens.textContent = "--";
-  rawOutput.value = "";
 
   const startTime = performance.now();
   console.log(`⏱️ [EdgeWriter] Request started at: ${new Date().toLocaleTimeString()}`);
@@ -192,10 +398,10 @@ async function generate() {
     updateProgress(50, "Generating response...");
     console.log("📡 [EdgeWriter] Sending request to server...");
     
-    const res = await fetch("http://127.0.0.1:8000/generate", {
+    const res = await fetch(GENERATE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ task, text })
+      body: JSON.stringify({ task, text, tone, custom_tone: customTone })
     });
     
     const endTime = performance.now();
@@ -222,7 +428,6 @@ async function generate() {
     metricTime.textContent = `${data.latency}s`;
     metricPromptTokens.textContent = data.tokens?.prompt || "--";
     metricCompletionTokens.textContent = data.tokens?.completion || "--";
-    rawOutput.value = data.raw_output || "(not available)";
     
     deviceStatus.textContent = "Done – Phi-3 inference";
     statusIndicator.className = "status-dot active";
@@ -247,6 +452,68 @@ async function generate() {
     }
     spinner.classList.add("hidden");
   }
+}
+
+async function sendChatMessage() {
+  if (isChatProcessing) return;
+  const message = chatInput.value.trim();
+  if (!message) return;
+
+  if (!isServerReady) {
+    deviceStatus.textContent = "Checking server...";
+    statusIndicator.className = "status-dot busy";
+    const ok = await checkServerStatus();
+    if (!ok) {
+      addChatMessage('assistant', 'Server offline. Start server.py and try again.');
+      return;
+    }
+  }
+
+  isChatProcessing = true;
+  chatSend.disabled = true;
+  chatInput.disabled = true;
+  addChatMessage('user', message);
+  chatHistory.push({ role: 'user', content: message });
+  chatInput.value = '';
+  addTypingIndicator();
+
+  try {
+    const payload = { messages: chatHistory.slice(-12) };
+    const res = await fetch(CHAT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30000)
+    });
+
+    if (!res.ok) throw new Error(`Chat failed with status ${res.status}`);
+    const data = await res.json();
+
+    removeTypingIndicator();
+    const assistantText = data.text || 'No response';
+    addChatMessage('assistant', assistantText, false, true);
+    chatHistory.push({ role: 'assistant', content: assistantText });
+  } catch (err) {
+    console.error('Chat error:', err.message);
+    removeTypingIndicator();
+    addChatMessage('assistant', '❌ Error generating response.');
+    isServerReady = false;
+    setChatControlsEnabled(false);
+    deviceStatus.textContent = 'Server Offline';
+    statusIndicator.className = 'status-dot error';
+  } finally {
+    isChatProcessing = false;
+    if (isServerReady) {
+      chatInput.disabled = false;
+      chatSend.disabled = false;
+      chatInput.focus();
+    }
+  }
+}
+
+function clearChatHistory() {
+  chatHistory = [];
+  chatMessages.innerHTML = '<div class="text-center text-slate-500 text-sm py-8">Start a conversation...</div>';
 }
 
 // Copy output
@@ -277,25 +544,27 @@ function clearAll() {
   metricTime.textContent = "--";
   metricPromptTokens.textContent = "--";
   metricCompletionTokens.textContent = "--";
-  rawOutput.value = "";
-}
-
-// Toggle token details visibility
-function toggleTokenDetails() {
-  const details = document.getElementById('token-details');
-  const chevron = document.getElementById('token-chevron');
-  details.classList.toggle('hidden');
-  chevron.classList.toggle('rotate-180');
 }
 
 // Event listeners
+taskSelect.addEventListener('change', updateToneVisibility);
+toneSelect.addEventListener('change', updateToneVisibility);
+writingModeBtn.addEventListener("click", () => switchMode('writing'));
+chatModeBtn.addEventListener("click", () => switchMode('chat'));
+chatSend.addEventListener("click", sendChatMessage);
+chatInput.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+});
+chatClear.addEventListener("click", clearChatHistory);
 generateBtn.addEventListener("click", generate);
 input.addEventListener("keydown", e => e.ctrlKey && e.key === "Enter" && generate());
 
 window.pasteText = pasteText;
 window.clearAll = clearAll;
 window.copyOutput = copyOutput;
-window.toggleTokenDetails = toggleTokenDetails;
 
 // Initialize
 console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -308,8 +577,10 @@ detectHardware().then(() => {
 checkServerStatus().then(ready => {
   if (ready) {
     console.log("✅ [EdgeWriter] Ready to generate!");
+    setChatControlsEnabled(true);
   } else {
     console.log("⚠️ [EdgeWriter] Server not running. Start with: python server.py");
+    setChatControlsEnabled(false);
   }
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 });
