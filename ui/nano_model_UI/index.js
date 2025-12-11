@@ -165,52 +165,46 @@ function escapeHtml(str) {
 function renderMarkdownBasic(text) {
   if (!text) return '';
 
-  // Escape HTML to prevent XSS
-  let html = escapeHtml(text);
-
-  // Code blocks (Pre-process to avoid matching * or _ inside code)
   const codeBlocks = [];
-  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+  let working = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
     const preservedCode = code.replace(/\s+$/, '');
     codeBlocks.push({ lang, code: preservedCode });
     return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
   });
 
+  working = escapeHtml(working);
+
   const inlineCode = [];
-  html = html.replace(/`([^`]+)`/g, (_, code) => {
-    inlineCode.push(escapeHtml(code));
+  working = working.replace(/`([^`]+)`/g, (_, code) => {
+    inlineCode.push(code);
     return `__INLINE_CODE_${inlineCode.length - 1}__`;
   });
 
-  //Basic Formatting
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'); // Bold
-  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>'); // Italic
-  
-  // Headers
-  html = html.replace(/^### (.*$)/gm, '<h3 class="text-lg font-bold mt-2">$1</h3>');
-  html = html.replace(/^## (.*$)/gm, '<h2 class="text-xl font-bold mt-3">$1</h2>');
-  html = html.replace(/^# (.*$)/gm, '<h1 class="text-2xl font-bold mt-4">$1</h1>');
+  working = working.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  working = working.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
-  // Lists (Simple)
-  html = html.replace(/^\s*[-•*]\s+(.*$)/gm, '<li class="ml-4 list-disc">$1</li>');
-  html = html.replace(/((?:<li.*<\/li>\n?)+)/g, '<ul class="my-2">$1</ul>');
+  working = working.replace(/^### (.*$)/gm, '<h3 class="text-lg font-bold mt-2">$1</h3>');
+  working = working.replace(/^## (.*$)/gm, '<h2 class="text-xl font-bold mt-3">$1</h2>');
+  working = working.replace(/^# (.*$)/gm, '<h1 class="text-2xl font-bold mt-4">$1</h1>');
 
-  html = html.replace(/__INLINE_CODE_(\d+)__/g, (_, id) => {
+  working = working.replace(/^\s*[-•*]\s+(.*$)/gm, '<li class="ml-4 list-disc">$1</li>');
+  working = working.replace(/((?:<li.*<\/li>\n?)+)/g, '<ul class="my-2">$1</ul>');
+
+  working = working.replace(/__INLINE_CODE_(\d+)__/g, (_, id) => {
     return `<code class="bg-slate-700 px-1 rounded text-sm">${inlineCode[id]}</code>`;
   });
 
-  html = html.replace(/__CODE_BLOCK_(\d+)__/g, (_, id) => {
+  working = working.replace(/__CODE_BLOCK_(\d+)__/g, (_, id) => {
     const block = codeBlocks[id];
     const langClass = block.lang ? ` class="language-${block.lang}"` : '';
     const safeCode = escapeHtml(block.code);
     return `<pre class="bg-slate-800 p-3 rounded-lg my-2 overflow-x-auto"><code${langClass}>${safeCode}</code></pre>`;
   });
 
-  // Paragraphs
-  html = html.replace(/\n\n+/g, '<br><br>');
-  html = html.replace(/\n/g, '<br>');
+  working = working.replace(/\n\n+/g, '<br><br>');
+  working = working.replace(/\n/g, '<br>');
 
-  return html;
+  return working;
 }
 
 async function sendChatMessage() {
