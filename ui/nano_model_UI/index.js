@@ -29,13 +29,13 @@ const improvementBar = document.getElementById('improvement-bar');
 // Counter elements
 const charCount = document.getElementById('char-count');
 const wordCount = document.getElementById('word-count');
-const tokenEst = document.getElementById('token-est');
 
 const MEDIAPIPE_MODEL = 'weights.bin';
 
 let mediapipeLLM = null;
 let isInitialized = false;
 let gpuSupportProbe = null;
+let systemPromptText = "System: You are a helpful assistant.";
 
 // Hardware info elements
 const hwPlatform = document.getElementById('hw-platform');
@@ -138,18 +138,48 @@ function updateChatSendButtonState(generating) {
     chatSend.classList.add('bg-purple-600', 'hover:bg-purple-700');
   }
 }
-
-function buildChatPrompt(userMessage) {
-  let prompt = "System: You are a highly capable, thoughtful, and precise assistant. Your goal is to deeply understand the user's intent, ask clarifying questions when needed, think step-by-step through complex problems, provide clear and accurate answers, and proactively anticipate helpful follow-up information. Always prioritize being truthful, nuanced, insightful, and efficient, tailoring your responses specifically to the user's needs and preferences.\n\n";
+// function buildChatPrompt(userMessage) {
+//   let prompt = "System: You are a highly capable, thoughtful, and precise assistant. Your goal is to deeply understand the user's intent, ask clarifying questions when needed, think step-by-step through complex problems, provide clear and accurate answers, and proactively anticipate helpful follow-up information. Always prioritize being truthful, nuanced, insightful, and efficient, tailoring your responses specifically to the user's needs and preferences.\n\n";
   
-  // Add recent history (limit to avoid token overflow)
-  const recentHistory = chatHistory.slice(-1); // Last 1 messages
-  for (const msg of recentHistory) {
-    const roleLabel = msg.role === 'user' ? 'User' : 'Model';
-    prompt += `${roleLabel}: ${msg.content}\n`;
+//   // Add recent history (limit to avoid token overflow)
+//   const recentHistory = chatHistory.slice(-6);
+//   for (const msg of recentHistory) {
+//     const roleLabel = msg.role === 'user' ? 'User' : 'Gemini';
+//     prompt += `${roleLabel}: ${msg.content}\n`;
+//   }
+  
+//   prompt += `User: ${userMessage}\nModel:`;
+//   return prompt;
+// }
+function buildChatPrompt(userMessage) {
+  let prompt = systemPromptText;
+  const MAX_HISTORY_TOKENS = 2500; 
+  let historyText = "\n\n### [CHAT HISTORY]\n";
+  let currentHistoryTokens = 0;
+  
+  const reversedHistory = [...chatHistory].reverse();
+  let historyMessages = [];
+  
+  for (const msg of reversedHistory) {
+    const roleLabel = msg.role === 'user' ? 'User' : 'Gemini';
+    const msgText = ` - ${roleLabel}: ${msg.content}\n`;
+    
+    const estTokens = msg.content.length / 3; 
+    
+    if (currentHistoryTokens + estTokens > MAX_HISTORY_TOKENS) {
+      break;
+    }
+    
+    historyMessages.unshift(msgText); 
+    currentHistoryTokens += estTokens;
   }
   
-  prompt += `User: ${userMessage}\nModel:`;
+  if (historyMessages.length > 0) {
+    prompt += historyText + historyMessages.join("");
+    prompt += "\n- You MUST NOT quote the \"User:\" or \"Gemini:\" markers from the history. They are for your context only.";
+  }
+  
+  prompt += `\n\nUser: ${userMessage}\nGemini:`;
   return prompt;
 }
 
@@ -553,19 +583,8 @@ function updateCounters() {
   const chars = text.length;
   const words = text.trim() ? text.trim().split(/\s+/).filter(w => w.length > 0).length : 0;
   
-  const estimatedTokens = Math.ceil(words * 1.35); 
-  
   charCount.textContent = `${chars} characters`;
   wordCount.textContent = `${words} words`;
-  tokenEst.textContent = `~${estimatedTokens} tokens`;
-  
-  if (estimatedTokens > 4000) {
-    tokenEst.classList.add('text-red-400');
-    tokenEst.classList.remove('text-slate-400');
-  } else {
-    tokenEst.classList.remove('text-red-400');
-    tokenEst.classList.add('text-slate-400');
-  }
 }
 
 input.addEventListener('input', updateCounters);
@@ -753,6 +772,32 @@ taskSelect.addEventListener('change', () => {
   }
 });
 
+// Cache management for model files
+async function getCachedModel() {
+  try {
+    const cache = await caches.open('edgewriter-model-cache-v1');
+    const cachedResponse = await cache.match(MEDIAPIPE_MODEL);
+    if (cachedResponse) {
+      console.log('✓ Model loaded from cache');
+      return cachedResponse;
+    }
+    return null;
+  } catch (e) {
+    console.warn('Cache access failed:', e);
+    return null;
+  }
+}
+
+async function cacheModel(response) {
+  try {
+    const cache = await caches.open('edgewriter-model-cache-v1');
+    await cache.put(MEDIAPIPE_MODEL, response.clone());
+    console.log('✓ Model cached successfully');
+  } catch (e) {
+    console.warn('Failed to cache model:', e);
+  }
+}
+
 async function init() {
   loader.classList.remove('hidden');
   submit.disabled = true;
@@ -763,22 +808,46 @@ async function init() {
   let modelBlobUrl = null;
 
   try {
-    updateProgress(10, "Downloading model...");
-    setDeviceStatus("Downloading model...", true);
+    updateProgress(10, "Checking cache...");
+    setDeviceStatus("Checking cache...", true);
 
-    // Fetch model once to avoid double download and check size
+    // Load system prompt
+    try {
+      const promptResp = await fetch('system_prompt.txt');
+      if (promptResp.ok) {
+        systemPromptText = await promptResp.text();
+      }
+    } catch (e) {
+      console.warn("Failed to load system_prompt.txt:", e);
+    }
+
+    // Try to get model from cache first
     let modelPath = MEDIAPIPE_MODEL;
     let modelSize = 0;
-    try {
-      const response = await fetch(MEDIAPIPE_MODEL);
+    let response = await getCachedModel();
+    
+    if (response) {
+      updateProgress(20, "Loading from cache...");
+      setDeviceStatus("Loading from cache...", true);
+    } else {
+      updateProgress(15, "Downloading model...");
+      setDeviceStatus("Downloading model...", true);
+      response = await fetch(MEDIAPIPE_MODEL);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      
+      // Cache the model for future use
+      await cacheModel(response);
+      updateProgress(25, "Model cached");
+    }
+    
+    try {
       const blob = await response.blob();
       modelSize = blob.size;
       modelBlobUrl = URL.createObjectURL(blob);
       modelPath = modelBlobUrl;
-      updateProgress(30, "Model downloaded");
+      updateProgress(30, "Model ready");
     } catch (e) {
-      console.warn("Pre-fetch failed, using direct path:", e);
+      console.warn("Blob creation failed, using direct path:", e);
     }
     
     const genaiFileset = await GenAiFilesetResolver.forGenAiTasks(
