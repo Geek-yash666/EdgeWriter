@@ -97,3 +97,9 @@ Best for debugging or if you prefer the standard Gradio look.
 ```
 
 ## **SCREENSHOTS**
+
+### Gradio Interface
+![Gradio Interface](../../results/phi_model_gradio.png)
+
+### Gradio Chat Mode
+![Gradio Chat Mode](../../results/phi_model_gradio_chat.png)
