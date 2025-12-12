@@ -1,53 +1,70 @@
 # EdgeWriter - Dual Engine UI
 
-This UI combines both models into a single interface with one server.
+This UI combines **both** engines into a single interface served by one local server.
 
-## Models Available
+## 🚀 Models Available
 
-### 1. Base Model (MediaPipe)
-- **Runs in browser** - No additional setup needed
-- Uses WebGPU/CPU for inference
-- Lightweight and fast
-- Best for quick edits
+### 1) Base Model (MediaPipe / Gemini Nano-style)
+- **Runs in your browser** (WebGPU when available, CPU fallback)
+- Best for fast, lightweight edits
+- Loads when you click **Initialize Base Model** (and is protected from double-loading)
 
-### 2. Phi-3 Mini (Fine-tuned)
-- **Runs on server** - GPU accelerated via llama.cpp
-- Higher quality output
-- Best for complex tasks
+### 2) Phi-3 Mini (Fine-tuned, llama.cpp)
+- **Runs on the local Python server** via `llama-cpp-python`
+- Higher quality output for complex tasks
+- **Loads lazily** (only when you first use Phi-3 for Generate/Chat)
 
-## How to Run
+## ▶️ How to Run
 
-Simply run:
+### Option 1: One-click (Windows)
+Run:
+
 ```
 start_dual_ui.bat
 ```
 
-Or manually:
+What it does:
+- Starts the FastAPI server at `http://127.0.0.1:8000`
+- Launches **Chrome first (preferred)**, otherwise **Edge**, using a **temporary profile** and GPU-friendly flags (so it won’t affect your main browser profile)
+- Stops the server automatically when you close that browser window
+
+### Option 2: Manual
+From this folder:
+
 ```
 python server.py
 ```
 
-The server will:
-1. Load the Phi-3 model
-2. Serve the UI at http://127.0.0.1:8000
-3. Open your browser automatically
+## 📦 Prerequisites
 
-## Requirements
+- **Python 3.x**
+- **Browser with WebGPU**: Chrome or Edge recommended
+- **Model files**:
+	- `ui/nano_model_UI/weights.bin` (base model weights)
+	- `ui/phi_model_UI/phi3-writing-Q8.gguf` (Phi-3 GGUF)
 
-### Python Dependencies
+## 🛠️ Installation
+
+Install Python dependencies (recommended: use the same requirements as the Phi UI):
+
 ```
-pip install fastapi uvicorn llama-cpp-python
+pip install -r ..\phi_model_UI\requirements.txt
 ```
 
-### Model Files
-- `../nano_model_UI/weights.bin` - MediaPipe model (loaded in browser)
-- `../phi_model_UI/phi3-writing-Q8.gguf` - Phi-3 model (loaded by server)
+### ⚡ NVIDIA GPU acceleration (Phi-3)
+For best Phi-3 performance on NVIDIA GPUs, install a CUDA-enabled `llama-cpp-python` wheel that matches your Python + CUDA.
+The launcher prints an example wheel URL when it detects an NVIDIA GPU.
 
-## Features
+## ✨ Features
 
-- Task selection: Rewrite, Summarize, Proofread, Paraphrase
-- Tone control: Neutral, Professional, Friendly, Concise, Academic, Custom
-- Real-time quality metrics
-- Inference telemetry (latency, tokens, energy estimation)
-- Hardware detection
-- 100% local - no data sent to external servers
+- **Writing tools**: Rewrite, Summarize, Proofread, Paraphrase + tone control (including Custom)
+- **Chat mode**: Conversation UI for both engines
+- **Telemetry**: latency/tokens estimates
+- **Hardware info**: shows OS/cores/RAM and best-effort GPU name/VRAM (from `/api/gpu-info`)
+- **Local-first**: all inference runs locally
+
+## 🔧 Notes / Troubleshooting
+
+- If you see the base model fetching `weights.bin` during initialization: that’s expected (the model must load into the browser). The UI prevents double-click loading.
+- If the base model fails with a “stream ended” / “Expected 8 bytes” error, ensure `ui/nano_model_UI/weights.bin` exists and try a fresh reload.
+- Phi-3 will not load at startup; it loads only after you select Phi-3 and run Generate/Chat.

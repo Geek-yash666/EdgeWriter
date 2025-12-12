@@ -41,8 +41,19 @@ const modePhi3Btn = document.getElementById('mode-phi3');
 const baseStatus = document.getElementById('base-status');
 const phi3Status = document.getElementById('phi3-status');
 
+// Writing/Chat mode elements
+const writingModeBtn = document.getElementById('writing-mode-btn');
+const chatModeBtn = document.getElementById('chat-mode-btn');
+const writingSection = document.getElementById('writing-section');
+const chatSection = document.getElementById('chat-section');
+const outputSection = document.getElementById('output-section');
+const chatInput = document.getElementById('chat-input');
+const chatSend = document.getElementById('chat-send');
+const chatClear = document.getElementById('chat-clear');
+const chatMessages = document.getElementById('chat-messages');
+
 // === Config ===
-const MEDIAPIPE_MODEL = '../nano_model_UI/weights.bin';
+const MEDIAPIPE_MODEL = '/nano_model_UI/weights.bin';
 const PHI3_SERVER_URL = ''; // Same origin - server.py serves both UI and API
 
 // === State ===
@@ -51,6 +62,14 @@ let mediapipeLLM = null;
 let isPhi3ServerReady = false;
 let isBaseModelReady = false;
 let gpuSupportProbe = null;
+let baseInitPromise = null;
+
+let currentMode = 'writing';
+let chatHistory = [];
+let isChatProcessing = false;
+let stopRequested = false;
+
+const SYSTEM_PROMPT_TEXT = "System: You are a helpful assistant. Be concise, accurate, and safe.";
 
 // === Hardware Detection ===
 async function detectHardware() {
@@ -68,21 +87,47 @@ async function detectHardware() {
   const cores = navigator.hardwareConcurrency || 'N/A';
   document.getElementById('hw-cores').textContent = cores !== 'N/A' ? `${cores} cores` : 'N/A';
   
+
+  // Prefer server-detected RAM when available
+  const hwMemory = document.getElementById('hw-memory');
   if (navigator.deviceMemory) {
-    document.getElementById('hw-memory').textContent = `${navigator.deviceMemory} GB`;
+    hwMemory.textContent = `${navigator.deviceMemory} GB`;
   } else {
-    document.getElementById('hw-memory').textContent = 'N/A';
+    hwMemory.textContent = 'N/A';
   }
-  
+
+  // WebGPU capability (browser-side)
   const gpuSupport = await evaluateGpuDelegateSupport();
-  const hwGpu = document.getElementById('hw-gpu');
-  if (gpuSupport.ok) {
-    hwGpu.textContent = 'WebGPU Available';
-    hwGpu.classList.add('text-emerald-400');
-  } else {
-    hwGpu.textContent = gpuSupport.reason || 'Not Available';
-    hwGpu.classList.add('text-amber-400');
+  const webgpuText = gpuSupport.ok ? 'WebGPU Available' : (gpuSupport.reason || 'Not Available');
+
+  // System GPU info (server-side) with name + VRAM when possible
+  let systemGpuText = '';
+  try {
+    const res = await fetch('/api/gpu-info', { method: 'GET', signal: AbortSignal.timeout(2500) });
+    if (res.ok) {
+      const data = await res.json();
+
+      if (typeof data?.ramGB === 'number' && data.ramGB > 0) {
+        hwMemory.textContent = `${data.ramGB} GB`;
+      }
+
+      const gpus = Array.isArray(data?.gpus) ? data.gpus : [];
+      if (gpus.length) {
+        const preferred = gpus.find(g => String(g?.type || '').toUpperCase().includes('NVIDIA')) || gpus[0];
+        const name = String(preferred?.name || '').trim();
+        const mem = String(preferred?.memory || '').trim();
+        systemGpuText = name ? (mem && mem !== 'Unknown' ? `${name} (${mem})` : name) : '';
+      }
+    }
+  } catch (_) {
+    // ignore; we'll fall back to WebGPU-only messaging
   }
+
+  const hwGpu = document.getElementById('hw-gpu');
+  const combined = systemGpuText ? `${systemGpuText} • ${webgpuText}` : webgpuText;
+  hwGpu.textContent = combined;
+  hwGpu.classList.remove('text-emerald-400', 'text-amber-400');
+  hwGpu.classList.add(gpuSupport.ok ? 'text-emerald-400' : 'text-amber-400');
 }
 
 // Probe WebGPU capabilities
@@ -137,6 +182,151 @@ function updateCounters() {
 }
 
 input.addEventListener('input', updateCounters);
+
+// === Chat helpers ===
+function addChatMessage(role, content, isGenerating = false, allowHtml = false) {
+  if (!chatMessages) return null;
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `chat-bubble ${role}${isGenerating ? ' generating' : ''}`;
+
+  if (allowHtml) {
+    messageDiv.innerHTML = content;
+  } else {
+    messageDiv.textContent = content;
+  }
+
+  const placeholder = chatMessages.querySelector('.text-center');
+  if (placeholder) placeholder.remove();
+
+  chatMessages.appendChild(messageDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  return messageDiv;
+}
+
+function addTypingIndicator() {
+  if (!chatMessages) return;
+  const typingDiv = document.createElement('div');
+  typingDiv.className = 'chat-bubble assistant';
+  typingDiv.id = 'typing-indicator';
+  typingDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+  chatMessages.appendChild(typingDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  const typing = document.getElementById('typing-indicator');
+  if (typing) typing.remove();
+}
+
+function setChatControlsEnabled(enabled) {
+  if (!chatInput || !chatSend || !chatClear) return;
+  chatInput.disabled = !enabled;
+  chatSend.disabled = !enabled;
+  chatClear.disabled = !enabled;
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderMarkdownBasic(text) {
+  if (!text) return '';
+
+  const codeBlocks = [];
+  let working = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const preservedCode = code.replace(/\s+$/, '');
+    codeBlocks.push({ lang, code: preservedCode });
+    return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
+  });
+
+  working = escapeHtml(working);
+
+  const inlineCode = [];
+  working = working.replace(/`([^`]+)`/g, (_, code) => {
+    inlineCode.push(code);
+    return `__INLINE_CODE_${inlineCode.length - 1}__`;
+  });
+
+  working = working.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  working = working.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+  working = working.replace(/^### (.*$)/gm, '<h3 class="text-lg font-bold mt-2">$1</h3>');
+  working = working.replace(/^## (.*$)/gm, '<h2 class="text-xl font-bold mt-3">$1</h2>');
+  working = working.replace(/^# (.*$)/gm, '<h1 class="text-2xl font-bold mt-4">$1</h1>');
+
+  working = working.replace(/^\s*[-•*]\s+(.*$)/gm, '<li class="ml-4 list-disc">$1</li>');
+  working = working.replace(/((?:<li.*<\/li>\n?)+)/g, '<ul class="my-2">$1</ul>');
+
+  working = working.replace(/__INLINE_CODE_(\d+)__/g, (_, id) => {
+    return `<code class="bg-slate-700 px-1 rounded text-sm">${escapeHtml(inlineCode[id])}</code>`;
+  });
+
+  working = working.replace(/__CODE_BLOCK_(\d+)__/g, (_, id) => {
+    const block = codeBlocks[id];
+    const langClass = block.lang ? ` class="language-${block.lang}"` : '';
+    const safeCode = escapeHtml(block.code);
+    return `<pre class="bg-slate-800 p-3 rounded-lg my-2 overflow-x-auto"><code${langClass}>${safeCode}</code></pre>`;
+  });
+
+  working = working.replace(/\n\n+/g, '<br><br>');
+  working = working.replace(/\n/g, '<br>');
+  return working;
+}
+
+function buildBaseChatPrompt(userMessage) {
+  const MAX_HISTORY_TOKENS = 2500;
+  let prompt = SYSTEM_PROMPT_TEXT;
+  let currentTokens = 0;
+  const historyLines = [];
+
+  for (const msg of [...chatHistory].reverse()) {
+    const roleLabel = msg.role === 'user' ? 'User' : 'Assistant';
+    const line = `${roleLabel}: ${msg.content}`;
+    const estTokens = msg.content.length / 3;
+    if (currentTokens + estTokens > MAX_HISTORY_TOKENS) break;
+    historyLines.unshift(line);
+    currentTokens += estTokens;
+  }
+
+  if (historyLines.length) {
+    prompt += `\n\n### [CHAT HISTORY]\n${historyLines.join('\n')}\n`;
+  }
+
+  prompt += `\nUser: ${userMessage}\nAssistant:`;
+  return prompt;
+}
+
+function switchMode(mode) {
+  currentMode = mode;
+
+  if (!writingModeBtn || !chatModeBtn || !writingSection || !chatSection || !outputSection) {
+    return;
+  }
+
+  if (mode === 'writing') {
+    writingModeBtn.className = 'flex-1 px-4 py-2 rounded-xl font-medium transition bg-gradient-to-r from-purple-600 to-pink-600 text-white';
+    chatModeBtn.className = 'flex-1 px-4 py-2 rounded-xl font-medium transition bg-white/5 text-slate-300 hover:bg-white/10';
+    writingSection.classList.remove('hidden');
+    chatSection.classList.add('hidden');
+    outputSection.classList.remove('lg:col-span-2');
+    outputSection.classList.remove('hidden');
+  } else {
+    chatModeBtn.className = 'flex-1 px-4 py-2 rounded-xl font-medium transition bg-gradient-to-r from-purple-600 to-pink-600 text-white';
+    writingModeBtn.className = 'flex-1 px-4 py-2 rounded-xl font-medium transition bg-white/5 text-slate-300 hover:bg-white/10';
+    writingSection.classList.add('hidden');
+    chatSection.classList.remove('hidden');
+    outputSection.classList.add('lg:col-span-2');
+    outputSection.classList.add('hidden');
+
+    const canChat = (selectedMode === 'base' && isBaseModelReady) || (selectedMode === 'phi3' && isPhi3ServerReady);
+    setChatControlsEnabled(canChat);
+  }
+}
 
 // === Progress Updates ===
 function updateProgress(percent, status = 'Processing...') {
@@ -338,7 +528,16 @@ window.selectMode = async (mode) => {
   
   submit.disabled = false;
   statusIndicator.className = "status-dot";
+
+  // If user is already on chat tab, update chat controls
+  const canChat = (selectedMode === 'base' && isBaseModelReady) || (selectedMode === 'phi3' && isPhi3ServerReady);
+  if (currentMode === 'chat') {
+    setChatControlsEnabled(canChat);
+  }
 };
+
+if (writingModeBtn) writingModeBtn.addEventListener('click', () => switchMode('writing'));
+if (chatModeBtn) chatModeBtn.addEventListener('click', () => switchMode('chat'));
 
 // === Check Phi-3 Server ===
 async function checkPhi3Server() {
@@ -371,16 +570,149 @@ async function checkPhi3Server() {
   return false;
 }
 
+async function sendChatMessage() {
+  // Stop behavior for streaming base model
+  if (isChatProcessing && selectedMode === 'base') {
+    stopRequested = true;
+    return;
+  }
+
+  const message = chatInput?.value?.trim();
+  if (!message) return;
+  if (!selectedMode) {
+    alert('Please select a model first (Base or Phi-3).');
+    return;
+  }
+
+  // Ensure the selected engine is ready
+  if (selectedMode === 'base' && !isBaseModelReady) {
+    const ok = await initBaseModel();
+    if (!ok) return;
+  }
+  if (selectedMode === 'phi3' && !isPhi3ServerReady) {
+    const ok = await checkPhi3Server();
+    if (!ok) {
+      addChatMessage('assistant', 'Server offline. Start the Integrated UI server and try again.');
+      return;
+    }
+  }
+
+  // Remove warning banner if present
+  const warningBanner = document.getElementById('chat-warning-banner');
+  if (warningBanner) warningBanner.remove();
+
+  addChatMessage('user', message);
+  chatHistory.push({ role: 'user', content: message });
+  chatInput.value = '';
+
+  isChatProcessing = true;
+  stopRequested = false;
+  setChatControlsEnabled(false);
+  addTypingIndicator();
+
+  try {
+    if (selectedMode === 'base') {
+      const prompt = buildBaseChatPrompt(message);
+      let assistantResponse = '';
+      let responseDiv = null;
+
+      mediapipeLLM.generateResponse(prompt, (partialResult, complete) => {
+        if (stopRequested) complete = true;
+
+        if (!responseDiv) {
+          removeTypingIndicator();
+          responseDiv = addChatMessage('assistant', escapeHtml(partialResult), true, true);
+        } else {
+          responseDiv.innerHTML += escapeHtml(partialResult);
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        assistantResponse += partialResult;
+
+        if (complete || stopRequested) {
+          responseDiv?.classList.remove('generating');
+          if (responseDiv) responseDiv.innerHTML = renderMarkdownBasic(assistantResponse);
+          chatHistory.push({ role: 'assistant', content: assistantResponse });
+          isChatProcessing = false;
+          stopRequested = false;
+          setChatControlsEnabled(true);
+          chatInput.focus();
+        }
+
+        return !stopRequested;
+      });
+      return;
+    }
+
+    // Phi-3 chat (requires /chat endpoint; handled gracefully if missing)
+    const payload = { messages: chatHistory.slice(-12) };
+    const res = await fetch(`${PHI3_SERVER_URL}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30000)
+    });
+
+    if (!res.ok) {
+      throw new Error(`Chat failed with status ${res.status}`);
+    }
+
+    const data = await res.json();
+    removeTypingIndicator();
+    const assistantText = data.text || 'No response';
+    addChatMessage('assistant', assistantText, false, true);
+    chatHistory.push({ role: 'assistant', content: assistantText });
+  } catch (err) {
+    console.error('Chat error:', err);
+    removeTypingIndicator();
+    const msg = (selectedMode === 'phi3' && String(err?.message || '').includes('status 404'))
+      ? 'Chat endpoint not available yet for Phi-3 in Integrated UI. (Needs /chat on the server.)'
+      : '❌ Error generating response. Please try again.';
+    addChatMessage('assistant', msg);
+    if (selectedMode === 'phi3') {
+      isPhi3ServerReady = false;
+      setChatControlsEnabled(false);
+      deviceStatus.textContent = 'Server Offline';
+      statusIndicator.className = 'status-dot error';
+    }
+  } finally {
+    if (selectedMode !== 'base') {
+      isChatProcessing = false;
+      if (currentMode === 'chat') {
+        const canChat = (selectedMode === 'base' && isBaseModelReady) || (selectedMode === 'phi3' && isPhi3ServerReady);
+        setChatControlsEnabled(canChat);
+        chatInput?.focus();
+      }
+    }
+  }
+}
+
 // === Initialize Base Model ===
 async function initBaseModel() {
+  if (isBaseModelReady) return true;
+  if (baseInitPromise) return baseInitPromise;
+
+  baseInitPromise = (async () => {
   loader.classList.remove('hidden');
   updateProgress(10, "Loading base model...");
   deviceStatus.textContent = "Initializing MediaPipe...";
   statusIndicator.className = "status-dot busy";
   baseStatus.textContent = "Loading...";
 
+  // Prevent double-click init
+  submit.disabled = true;
+  submit.classList.add('opacity-50', 'cursor-not-allowed');
+  submitText.textContent = 'Initializing Base Model...';
+
+  let modelBlobUrl = null;
   try {
     updateProgress(30, "Downloading model...");
+
+    // Fetch weights into a Blob URL to avoid range/stream issues on some setups
+    const resp = await fetch(MEDIAPIPE_MODEL);
+    if (!resp.ok) throw new Error(`Failed to fetch weights.bin (HTTP ${resp.status})`);
+    const blob = await resp.blob();
+    modelBlobUrl = URL.createObjectURL(blob);
     
     const genaiFileset = await GenAiFilesetResolver.forGenAiTasks(
       "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm"
@@ -393,7 +725,7 @@ async function initBaseModel() {
       updateProgress(60, "Trying GPU...");
       try {
         mediapipeLLM = await LlmInference.createFromOptions(genaiFileset, {
-          baseOptions: { modelAssetPath: MEDIAPIPE_MODEL, delegate: 'GPU' },
+          baseOptions: { modelAssetPath: modelBlobUrl, delegate: 'GPU' },
           maxTokens: 4096,
           temperature: 0.5,
           topK: 40
@@ -407,7 +739,7 @@ async function initBaseModel() {
     if (!usedGpu) {
       updateProgress(70, "Using CPU...");
       mediapipeLLM = await LlmInference.createFromOptions(genaiFileset, {
-        baseOptions: { modelAssetPath: MEDIAPIPE_MODEL, delegate: 'CPU' },
+        baseOptions: { modelAssetPath: modelBlobUrl, delegate: 'CPU' },
         maxTokens: 4096,
         temperature: 0.5,
         topK: 40
@@ -421,6 +753,11 @@ async function initBaseModel() {
     deviceStatus.textContent = usedGpu ? "Base Model Ready (GPU)" : "Base Model Ready (CPU)";
     statusIndicator.className = "status-dot active";
     submitText.textContent = "Generate";
+
+    if (modelBlobUrl) URL.revokeObjectURL(modelBlobUrl);
+    baseInitPromise = null;
+    submit.disabled = false;
+    submit.classList.remove('opacity-50', 'cursor-not-allowed');
     
     setTimeout(() => { loader.classList.add('hidden'); }, 500);
     return true;
@@ -433,8 +770,18 @@ async function initBaseModel() {
     deviceStatus.textContent = "Initialization failed";
     statusIndicator.className = "status-dot error";
     alert("Failed to load base model. Check console for details.");
+
+    if (modelBlobUrl) URL.revokeObjectURL(modelBlobUrl);
+    baseInitPromise = null;
+    submit.disabled = false;
+    submit.classList.remove('opacity-50', 'cursor-not-allowed');
+    submitText.textContent = 'Initialize Base Model';
     return false;
   }
+
+  })();
+
+  return baseInitPromise;
 }
 
 // === Generate with Base Model ===
@@ -626,7 +973,7 @@ window.pasteText = async () => {
   }
 };
 
-window.clearAll = () => {
+window.clearInput = () => {
   input.value = "";
   output.value = "";
   updateCounters();
@@ -637,9 +984,18 @@ window.clearAll = () => {
   metricEnergy.textContent = "--";
 };
 
+// Backwards compatibility
+window.clearAll = window.clearInput;
+
 window.copyOutput = () => {
   if (!output.value) return;
   navigator.clipboard.writeText(output.value);
+};
+
+window.dismissGpuBanner = () => {
+  const banner = document.getElementById('gpu-guidance-banner');
+  if (banner) banner.classList.add('hidden');
+  localStorage.setItem('edgewriter-gpu-banner-dismissed', 'true');
 };
 
 // === Initialize ===
@@ -655,6 +1011,9 @@ updateCounters();
 submit.disabled = true;
 submitText.textContent = "Select a Model";
 
+// Default to writing tab on load
+switchMode('writing');
+
 // Detect hardware
 detectHardware().then(() => {
   console.log("🖥️ Hardware detection complete");
@@ -668,5 +1027,26 @@ checkPhi3Server().then(ready => {
     console.log("⚠️ Phi-3 server not running. Start with: python server.py");
   }
 });
+
+// Chat event listeners
+if (chatSend) chatSend.addEventListener('click', sendChatMessage);
+if (chatInput) {
+  chatInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
+}
+if (chatClear) {
+  chatClear.addEventListener('click', () => {
+    if (confirm('Clear all chat history?')) {
+      chatHistory = [];
+      if (chatMessages) {
+        chatMessages.innerHTML = '<div class="text-center text-slate-500 text-sm py-8">Start a conversation...</div>';
+      }
+    }
+  });
+}
 
 console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");

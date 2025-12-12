@@ -143,6 +143,69 @@
       border-color: #8b5cf6 !important;
       background: rgba(139, 92, 246, 0.1) !important;
     }
+
+    /* Chat bubbles */
+    .chat-bubble {
+      max-width: 80%;
+      padding: 0.75rem 1rem;
+      border-radius: 1rem;
+      word-wrap: break-word;
+      animation: slideIn 0.3s ease-out;
+    }
+    .chat-bubble.user {
+      background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+      color: white;
+      margin-left: auto;
+      border-bottom-right-radius: 0.25rem;
+    }
+    .chat-bubble.assistant {
+      background: rgba(255, 255, 255, 0.05);
+      color: #f1f5f9;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      margin-right: auto;
+      border-bottom-left-radius: 0.25rem;
+    }
+    .chat-bubble.assistant.generating {
+      opacity: 0.7;
+    }
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .typing-indicator {
+      display: inline-flex;
+      gap: 4px;
+      padding: 0.5rem;
+    }
+    .typing-indicator span {
+      width: 8px;
+      height: 8px;
+      background: #94a3b8;
+      border-radius: 50%;
+      animation: typing 1.4s infinite;
+    }
+    .typing-indicator span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+    .typing-indicator span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+    @keyframes typing {
+      0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.7;
+      }
+      30% {
+        transform: translateY(-10px);
+        opacity: 1;
+      }
+    }
   </style>
 </head>
 <body class="p-4 md:p-8 flex flex-col items-center">
@@ -170,13 +233,84 @@
     </div>
   </header>
 
+  <!-- GPU Guidance Banner -->
+  <div id="gpu-guidance-banner" class="hidden w-full max-w-6xl mb-6 glass-panel rounded-2xl p-5 border-l-4 border-amber-400">
+    <div class="flex items-start gap-4">
+      <div class="flex-shrink-0 mt-1">
+        <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+        </svg>
+      </div>
+      <div class="flex-1">
+        <h3 class="text-sm font-semibold text-white mb-2">
+          <span id="gpu-current-name">Integrated GPU</span> Detected – Enable High-Performance GPU for Better Speed
+        </h3>
+        <p class="text-xs text-slate-300 mb-3" id="gpu-guidance-message">
+          Your system may have a dedicated GPU (NVIDIA/AMD) that isn't being used. Here's how to enable it:
+        </p>
+        <div class="space-y-2 text-xs text-slate-200">
+          <details class="bg-white/5 rounded-lg p-3 cursor-pointer hover:bg-white/10 transition">
+            <summary class="font-medium text-amber-300">Option 1: Browser Flag (Fastest)</summary>
+            <div class="mt-2 ml-4 text-slate-300">
+              <p class="mb-2">Navigate to this URL in your browser:</p>
+              <code class="block bg-slate-800 p-2 rounded text-green-300 overflow-x-auto mb-2">
+                chrome://flags/#force-high-performance-gpu
+              </code>
+              <ol class="space-y-1 list-decimal ml-4">
+                <li>Set the flag to <strong class="text-amber-300">Enabled</strong></li>
+                <li>Click <strong class="text-blue-400">Relaunch</strong> button at the bottom</li>
+              </ol>
+            </div>
+          </details>
+          <details class="bg-white/5 rounded-lg p-3 cursor-pointer hover:bg-white/10 transition">
+            <summary class="font-medium text-amber-300">Option 2: Windows Graphics Settings (Recommended)</summary>
+            <ol class="mt-2 ml-4 space-y-1 list-decimal text-slate-300">
+              <li>Open <strong>Windows Settings</strong> → <strong>System</strong> → <strong>Display</strong> → <strong>Graphics Settings</strong></li>
+              <li>Click "Browse" and select your browser executable (e.g., <code class="bg-slate-700 px-1 rounded">chrome.exe</code> or <code class="bg-slate-700 px-1 rounded">msedge.exe</code>)</li>
+              <li>Click <strong>Options</strong> and select <strong>High Performance</strong></li>
+              <li>Restart your browser and reload this page</li>
+            </ol>
+          </details>
+          <details class="bg-white/5 rounded-lg p-3 cursor-pointer hover:bg-white/10 transition">
+            <summary class="font-medium text-amber-300">Option 3: NVIDIA/AMD Control Panel</summary>
+            <ol class="mt-2 ml-4 space-y-1 list-decimal text-slate-300">
+              <li>Right-click on your desktop and open <strong>NVIDIA Control Panel</strong> or <strong>AMD Radeon Settings</strong></li>
+              <li>Navigate to <strong>Manage 3D Settings</strong> (NVIDIA) or <strong>Preferences → Additional Settings</strong> (AMD)</li>
+              <li>Add your browser to the program list</li>
+              <li>Set the preferred GPU to <strong>High-performance</strong> (NVIDIA/AMD GPU)</li>
+              <li>Restart your browser and reload this page</li>
+            </ol>
+          </details>
+        </div>
+        <button onclick="dismissGpuBanner()" class="mt-3 text-xs text-slate-400 hover:text-white transition underline">
+          Dismiss this message
+        </button>
+      </div>
+      <button onclick="dismissGpuBanner()" class="flex-shrink-0 text-slate-400 hover:text-white transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+
   <main class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <section class="glass-panel rounded-2xl p-6 flex flex-col h-[700px]">
+    <!-- Mode Selector Tabs -->
+    <div class="lg:col-span-2 glass-panel rounded-2xl p-2 flex gap-2">
+      <button id="writing-mode-btn" class="flex-1 px-4 py-2 rounded-xl font-medium transition bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+        ✍️ Writing Assistant
+      </button>
+      <button id="chat-mode-btn" class="flex-1 px-4 py-2 rounded-xl font-medium transition bg-white/5 text-slate-300 hover:bg-white/10">
+        💬 Chat Mode (Experimental)
+      </button>
+    </div>
+
+    <section id="writing-section" class="glass-panel rounded-2xl p-6 flex flex-col h-[700px]">
       <div class="flex justify-between items-center mb-6">
         <h2 class="text-lg font-semibold text-white">Input</h2>
         <div class="flex gap-2">
           <button onclick="pasteText()" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg transition text-slate-300">Paste</button>
-          <button onclick="clearAll()" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg transition text-slate-300">Clear</button>
+          <button onclick="clearInput()" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg transition text-slate-300">Clear</button>
         </div>
       </div>
 
@@ -244,7 +378,40 @@
       </button>
     </section>
 
-    <section class="flex flex-col gap-4 h-[700px]">
+    <!-- Chat Section (Hidden by default) -->
+    <section id="chat-section" class="hidden lg:col-span-2 glass-panel rounded-2xl p-6 flex flex-col h-[800px]">
+      <div id="chat-warning-banner" class="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-start gap-3">
+        <svg class="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+        </svg>
+        <div class="flex-1 text-xs">
+          <p class="font-semibold text-amber-300 mb-1">⚠️ Experimental Chat Mode</p>
+          <p class="text-slate-300">
+            • Chat can be higher power than writing tasks<br>
+            • Responses may be inaccurate — verify important facts<br>
+            • This is intended for basic chat interactions
+          </p>
+        </div>
+      </div>
+
+      <div id="chat-messages" class="flex-1 overflow-y-auto mb-4 space-y-3 px-2">
+        <div class="text-center text-slate-500 text-sm py-8">Start a conversation...</div>
+      </div>
+
+      <div class="flex gap-2">
+        <input id="chat-input" type="text" class="flex-1 glass-input rounded-xl p-3 text-sm" placeholder="Type your message..." disabled />
+        <button id="chat-send" class="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-medium px-6 rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+          Send
+        </button>
+      </div>
+      <div class="flex gap-2 mt-2">
+        <button id="chat-clear" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1 rounded-lg transition text-slate-300" disabled>
+          Clear History
+        </button>
+      </div>
+    </section>
+
+    <section id="output-section" class="flex flex-col gap-4 h-[700px]">
       <div class="glass-panel rounded-2xl p-6 flex-1 flex flex-col relative overflow-hidden">
         <div class="flex justify-between items-center mb-4">
           <h2 class="text-lg font-semibold text-white">Refined Output</h2>

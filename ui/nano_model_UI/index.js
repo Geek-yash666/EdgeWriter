@@ -35,6 +35,7 @@ const MEDIAPIPE_MODEL = 'weights.bin';
 let mediapipeLLM = null;
 let isInitialized = false;
 let gpuSupportProbe = null;
+let initPromise = null;
 let systemPromptText = "System: You are a helpful assistant.";
 // Low-resource controls
 let maxTokenLimit = 4096;
@@ -986,7 +987,11 @@ async function init() {
 
 submit.onclick = async () => {
   if (!isInitialized) {
-    const success = await init();
+    if (!initPromise) {
+      // lock immediately to prevent double-click starting a second init
+      initPromise = init().finally(() => { initPromise = null; });
+    }
+    const success = await initPromise;
     if (!success) return;
     if (!mediapipeLLM) return;
     return;
